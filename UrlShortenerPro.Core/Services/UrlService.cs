@@ -37,7 +37,7 @@ public class UrlService(
         }
 
         // Расчет срока истечения (по умолчанию 30 дней)
-        DateTime? expiresAt = DateTime.UtcNow.AddDays(request.ExpiresInDays ?? 30);
+        DateTime? expiresAt = DateTime.UtcNow.AddDays(request.ExpiresInDays == 0 ? 30 : request.ExpiresInDays ?? 30);
 
         // Создание записи URL
         var url = new Url
