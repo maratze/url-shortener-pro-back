@@ -128,7 +128,7 @@ public class UserService(IUserRepository userRepository, IConfiguration configur
     private string GenerateJwtToken(User user)
     {
         var tokenHandler = new JwtSecurityTokenHandler();
-        var key = Encoding.ASCII.GetBytes(configuration["JwtSettings:Key"] ?? "default_key_at_least_32_characters_long");
+        var key = Encoding.ASCII.GetBytes(configuration["JwtSettings:Key"] ?? throw new InvalidOperationException("JwtSettings:Key не найден"));
 
         var tokenDescriptor = new SecurityTokenDescriptor
         {

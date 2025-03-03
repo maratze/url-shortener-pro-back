@@ -124,11 +124,9 @@ if (app.Environment.IsDevelopment())
 // Важно: порядок middleware имеет значение!
 app.UseHttpsRedirection();
 app.UseCors("AllowAll");
-
-// ПРАВИЛЬНЫЙ ПОРЯДОК для routing и auth middleware
-app.UseRouting(); // Сначала routing
-app.UseAuthentication(); // Затем authentication
-app.UseAuthorization(); // Затем authorization
+app.UseRouting();
+app.UseAuthentication();  // Сначала аутентификация
+app.UseAuthorization();   // Затем авторизация
 app.MapControllers(); // И наконец endpoints
 
 // Применение миграций БД при запуске
