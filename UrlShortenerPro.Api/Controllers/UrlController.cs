@@ -9,7 +9,7 @@ namespace UrlShortenerPro.Api.Controllers;
 
 [ApiController]
 [Route("api/urls")]
-public class UrlController(IUrlService urlService) : ControllerBase
+public class UrlController(IUrlService urlService, IClientTrackingService clientTrackingService) : ControllerBase
 {
     // POST api/urls
     [HttpPost]
@@ -20,7 +20,8 @@ public class UrlController(IUrlService urlService) : ControllerBase
             int? userId = null;
             if (User.Identity?.IsAuthenticated == true)
             {
-                userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier) ?? throw new InvalidOperationException());
+                userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier) ??
+                                   throw new InvalidOperationException());
             }
 
             var urlRequest = new UrlCreationRequest
@@ -57,8 +58,9 @@ public class UrlController(IUrlService urlService) : ControllerBase
         // Проверка доступа - только владелец или публичный доступ
         if (url.UserId.HasValue)
         {
-            if (User.Identity?.IsAuthenticated == false || 
-                int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier) ?? throw new InvalidOperationException()) != url.UserId.Value)
+            if (User.Identity?.IsAuthenticated == false ||
+                int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier) ?? throw new InvalidOperationException()) !=
+                url.UserId.Value)
             {
                 return Forbid();
             }
@@ -89,5 +91,31 @@ public class UrlController(IUrlService urlService) : ControllerBase
             return NotFound();
 
         return NoContent();
+    }
+
+    [HttpGet("remaining-requests")]
+    public async Task<IActionResult> GetRemainingRequests()
+    {
+        try
+        {
+            // Extract client ID from header
+            if (!Request.Headers.TryGetValue("X-Client-Id", out var clientIdValues))
+            {
+                return BadRequest(new { message = "Client ID is required" });
+            }
+
+            string clientId = clientIdValues.ToString();
+
+            // Get remaining requests from service
+            int remainingRequests = await clientTrackingService.GetRemainingFreeRequestsAsync(clientId);
+
+            return Ok(new { remainingRequests });
+        }
+        catch (Exception ex)
+        {
+            // Log exception
+            return StatusCode(500,
+                new { message = "An error occurred while retrieving remaining requests", error = ex.Message });
+        }
     }
 }

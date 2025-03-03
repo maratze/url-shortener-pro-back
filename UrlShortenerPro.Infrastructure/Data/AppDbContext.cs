@@ -8,6 +8,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Url> Urls { get; set; }
     public DbSet<ClickData> ClickData { get; set; }
     public DbSet<User> Users { get; set; }
+    public DbSet<ClientUsage> ClientUsages { get; set; }
         
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -30,5 +31,17 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasMany(u => u.Urls)
             .WithOne(url => url.User)
             .HasForeignKey(url => url.UserId);
+            
+        modelBuilder.Entity<ClientUsage>()
+            .HasKey(c => c.Id);
+            
+        modelBuilder.Entity<ClientUsage>()
+            .HasIndex(c => c.ClientId)
+            .IsUnique();
+            
+        modelBuilder.Entity<ClientUsage>()
+            .Property(c => c.ClientId)
+            .IsRequired()
+            .HasMaxLength(50);
     }
 }

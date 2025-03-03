@@ -58,16 +58,19 @@ builder.Services.AddScoped<IUrlService, UrlService>();
 builder.Services.AddScoped<IAnalyticsService, AnalyticsService>();
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IJwtService, JwtService>();
+builder.Services.AddScoped<IClientUsageRepository, ClientUsageRepository>();
+builder.Services.AddScoped<IClientTrackingService, ClientTrackingService>();
+
 
 // Настройка CORS
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAll", builder =>
-    {
-        builder.AllowAnyOrigin()
+    options.AddPolicy("CorsPolicy",
+        corsPolicyBuilder => corsPolicyBuilder
+            .WithOrigins("http://localhost:3000") // Явно указываем домен фронтенда
             .AllowAnyMethod()
-            .AllowAnyHeader();
-    });
+            .AllowAnyHeader()
+            .AllowCredentials()); // Разрешаем передачу учетных данных
 });
 
 // Настройка JWT аутентификации
@@ -125,12 +128,13 @@ if (app.Environment.IsDevelopment())
 
 // Важно: порядок middleware имеет значение!
 app.UseHttpsRedirection();
-app.UseCors("AllowAll");
+app.UseCors("CorsPolicy");
 app.UseRouting();
 app.UseJwtMiddleware(); // Наш custom middleware для отладки JWT
 app.UseAuthentication();  // Сначала аутентификация
 app.UseAuthorization();   // Затем авторизация
 app.MapControllers(); // И наконец endpoints
+
 
 // Применение миграций БД при запуске
 using (var scope = app.Services.CreateScope())
