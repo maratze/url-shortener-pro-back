@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Text;
+using UrlShortenerPro.Api.Middleware;
 using UrlShortenerPro.Core.Interfaces;
 using UrlShortenerPro.Core.Services;
 using UrlShortenerPro.Infrastructure.Data;
@@ -56,6 +57,7 @@ builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IUrlService, UrlService>();
 builder.Services.AddScoped<IAnalyticsService, AnalyticsService>();
 builder.Services.AddScoped<IUserService, UserService>();
+builder.Services.AddScoped<IJwtService, JwtService>();
 
 // Настройка CORS
 builder.Services.AddCors(options =>
@@ -125,6 +127,7 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 app.UseCors("AllowAll");
 app.UseRouting();
+app.UseJwtMiddleware(); // Наш custom middleware для отладки JWT
 app.UseAuthentication();  // Сначала аутентификация
 app.UseAuthorization();   // Затем авторизация
 app.MapControllers(); // И наконец endpoints
