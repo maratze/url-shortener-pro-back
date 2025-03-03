@@ -10,6 +10,7 @@ namespace UrlShortenerPro.Core.Services;
 public class UrlService(
     IUrlRepository urlRepository,
     IClickDataRepository clickDataRepository,
+    IUserRepository userRepository,
     IConfiguration configuration)
     : IUrlService
 {
@@ -277,9 +278,9 @@ public class UrlService(
         return $"{baseUrl}/{shortCode}";
     }
 
-    private Task<bool> IsUserPremiumAsync(int userId)
+    private async Task<bool> IsUserPremiumAsync(int userId)
     {
-        // В реальном приложении здесь должен быть запрос к репозиторию пользователей
-        return Task.FromResult(false); // Для упрощения MVP
+        var user = await userRepository.GetByIdAsync(userId);
+        return user is { IsPremium: true };
     }
 }
