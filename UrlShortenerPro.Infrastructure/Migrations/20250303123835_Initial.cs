@@ -1,5 +1,6 @@
 ﻿using System;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 #nullable disable
 
@@ -15,13 +16,13 @@ namespace UrlShortenerPro.Infrastructure.Migrations
                 name: "Users",
                 columns: table => new
                 {
-                    Id = table.Column<int>(type: "int", nullable: false)
-                        .Annotation("SqlServer:Identity", "1, 1"),
-                    Email = table.Column<string>(type: "nvarchar(450)", nullable: true),
-                    PasswordHash = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    IsPremium = table.Column<bool>(type: "bit", nullable: false),
-                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    LastLoginAt = table.Column<DateTime>(type: "datetime2", nullable: true)
+                    Id = table.Column<int>(type: "integer", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    Email = table.Column<string>(type: "text", nullable: true),
+                    PasswordHash = table.Column<string>(type: "text", nullable: true),
+                    IsPremium = table.Column<bool>(type: "boolean", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    LastLoginAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -32,15 +33,15 @@ namespace UrlShortenerPro.Infrastructure.Migrations
                 name: "Urls",
                 columns: table => new
                 {
-                    Id = table.Column<int>(type: "int", nullable: false)
-                        .Annotation("SqlServer:Identity", "1, 1"),
-                    OriginalUrl = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    ShortCode = table.Column<string>(type: "nvarchar(450)", nullable: true),
-                    UserId = table.Column<int>(type: "int", nullable: true),
-                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    ExpiresAt = table.Column<DateTime>(type: "datetime2", nullable: true),
-                    CustomCode = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    IsActive = table.Column<bool>(type: "bit", nullable: false)
+                    Id = table.Column<int>(type: "integer", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    OriginalUrl = table.Column<string>(type: "text", nullable: true),
+                    ShortCode = table.Column<string>(type: "text", nullable: true),
+                    UserId = table.Column<int>(type: "integer", nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    ExpiresAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    CustomCode = table.Column<string>(type: "text", nullable: true),
+                    IsActive = table.Column<bool>(type: "boolean", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -56,16 +57,16 @@ namespace UrlShortenerPro.Infrastructure.Migrations
                 name: "ClickData",
                 columns: table => new
                 {
-                    Id = table.Column<int>(type: "int", nullable: false)
-                        .Annotation("SqlServer:Identity", "1, 1"),
-                    UrlId = table.Column<int>(type: "int", nullable: false),
-                    ClickedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    IpAddress = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    Country = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    City = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    DeviceType = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    Browser = table.Column<string>(type: "nvarchar(max)", nullable: true),
-                    ReferrerUrl = table.Column<string>(type: "nvarchar(max)", nullable: true)
+                    Id = table.Column<int>(type: "integer", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    UrlId = table.Column<int>(type: "integer", nullable: false),
+                    ClickedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    IpAddress = table.Column<string>(type: "text", nullable: true),
+                    Country = table.Column<string>(type: "text", nullable: true),
+                    City = table.Column<string>(type: "text", nullable: true),
+                    DeviceType = table.Column<string>(type: "text", nullable: true),
+                    Browser = table.Column<string>(type: "text", nullable: true),
+                    ReferrerUrl = table.Column<string>(type: "text", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -87,8 +88,7 @@ namespace UrlShortenerPro.Infrastructure.Migrations
                 name: "IX_Urls_ShortCode",
                 table: "Urls",
                 column: "ShortCode",
-                unique: true,
-                filter: "[ShortCode] IS NOT NULL");
+                unique: true);
 
             migrationBuilder.CreateIndex(
                 name: "IX_Urls_UserId",
@@ -99,8 +99,7 @@ namespace UrlShortenerPro.Infrastructure.Migrations
                 name: "IX_Users_Email",
                 table: "Users",
                 column: "Email",
-                unique: true,
-                filter: "[Email] IS NOT NULL");
+                unique: true);
         }
 
         /// <inheritdoc />

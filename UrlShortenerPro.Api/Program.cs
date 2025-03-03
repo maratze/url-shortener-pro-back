@@ -45,7 +45,7 @@ builder.Services.AddSwaggerGen(c =>
 
 // Добавление конфигурации БД
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")!));
 
 // Добавление репозиториев
 builder.Services.AddScoped<IUrlRepository, UrlRepository>();

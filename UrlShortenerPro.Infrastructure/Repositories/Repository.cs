@@ -5,46 +5,46 @@ using UrlShortenerPro.Infrastructure.Interfaces;
 
 namespace UrlShortenerPro.Infrastructure.Repositories;
 
-public class Repository<T>(AppDbContext context) : IRepository<T>
+public class Repository<T>(AppDbContext dbContext) : IRepository<T>
     where T : class
 {
-    private readonly DbSet<T> _dbSet = context.Set<T>();
+    protected readonly DbSet<T> DbSet = dbContext.Set<T>();
 
-    public async Task<T?> GetByIdAsync(int id)
+    public virtual async Task<T?> GetByIdAsync(int id)
     {
-        return await _dbSet.FindAsync(id);
+        return await DbSet.FindAsync(id);
     }
 
-    public async Task<IEnumerable<T>> GetAllAsync()
+    public virtual async Task<IEnumerable<T>> GetAllAsync()
     {
-        return await _dbSet.ToListAsync();
+        return await DbSet.ToListAsync();
     }
 
-    public async Task<IEnumerable<T>> FindAsync(Expression<Func<T, bool>> predicate)
+    public virtual async Task<IEnumerable<T>> FindAsync(Expression<Func<T, bool>> predicate)
     {
-        return await _dbSet.Where(predicate).ToListAsync();
+        return await DbSet.Where(predicate).ToListAsync();
     }
 
-    public async Task AddAsync(T entity)
+    public virtual async Task AddAsync(T entity)
     {
-        await _dbSet.AddAsync(entity);
+        await DbSet.AddAsync(entity);
     }
 
-    public Task UpdateAsync(T entity)
+    public virtual Task UpdateAsync(T entity)
     {
-        _dbSet.Attach(entity);
-        context.Entry(entity).State = EntityState.Modified;
+        DbSet.Attach(entity);
+        dbContext.Entry(entity).State = EntityState.Modified;
         return Task.CompletedTask;
     }
 
-    public Task DeleteAsync(T entity)
+    public virtual Task DeleteAsync(T entity)
     {
-        _dbSet.Remove(entity);
+        DbSet.Remove(entity);
         return Task.CompletedTask;
     }
 
-    public async Task SaveChangesAsync()
+    public virtual async Task SaveChangesAsync()
     {
-        await context.SaveChangesAsync();
+        await dbContext.SaveChangesAsync();
     }
 }
