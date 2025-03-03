@@ -9,5 +9,4 @@ public interface IUrlService
     Task<IEnumerable<UrlResponse>> GetUrlsByUserIdAsync(int userId);
     Task<bool> DeleteUrlAsync(string shortCode, int userId);
     Task<string> RedirectAndTrackAsync(string shortCode, string ipAddress, string userAgent, string referer);
-    Task<bool> IsUserAllowedToCreateMoreUrlsAsync(int? userId);
 }

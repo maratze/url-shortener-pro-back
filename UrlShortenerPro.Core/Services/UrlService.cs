@@ -10,32 +10,19 @@ namespace UrlShortenerPro.Core.Services;
 public class UrlService(
     IUrlRepository urlRepository,
     IClickDataRepository clickDataRepository,
-    IUserRepository userRepository,
     IConfiguration configuration)
     : IUrlService
 {
     private readonly Random _random = new();
+    private readonly string _baseUrl = configuration["BaseUrl"] ?? "https://localhost:7095";
 
     public async Task<UrlResponse> CreateShortUrlAsync(UrlCreationRequest request)
     {
-        // Проверка лимитов для пользователя
-        bool canCreate = await IsUserAllowedToCreateMoreUrlsAsync(request.UserId);
-        if (!canCreate)
-        {
-            throw new InvalidOperationException("Превышен лимит создания ссылок для вашего тарифа");
-        }
-
-        // Генерация или проверка короткого кода
+        // Генерация короткого кода
         string shortCode;
-        if (!string.IsNullOrEmpty(request.CustomCode) && request.UserId.HasValue)
-        {
-            // Проверка, что пользователь премиум для использования кастомного кода
-            if (!await IsUserPremiumAsync(request.UserId.Value))
-            {
-                throw new InvalidOperationException("Кастомные ссылки доступны только для премиум пользователей");
-            }
 
-            // Проверка доступности кастомного кода
+        if (!string.IsNullOrEmpty(request.CustomCode))
+        {
             bool exists = await urlRepository.ShortCodeExistsAsync(request.CustomCode);
             if (exists)
             {
@@ -46,26 +33,11 @@ public class UrlService(
         }
         else
         {
-            // Генерация случайного кода
             shortCode = await GenerateUniqueShortCodeAsync();
         }
 
-        // Расчет срока истечения
-        DateTime? expiresAt = null;
-        if (request.ExpiresInDays.HasValue && request.ExpiresInDays.Value > 0)
-        {
-            expiresAt = DateTime.UtcNow.AddDays(request.ExpiresInDays.Value);
-        }
-        else if (request.UserId.HasValue && await IsUserPremiumAsync(request.UserId.Value))
-        {
-            // Премиум пользователи могут иметь бессрочные ссылки
-            expiresAt = null;
-        }
-        else
-        {
-            // По умолчанию для бесплатных - 30 дней
-            expiresAt = DateTime.UtcNow.AddDays(30);
-        }
+        // Расчет срока истечения (по умолчанию 30 дней)
+        DateTime? expiresAt = DateTime.UtcNow.AddDays(request.ExpiresInDays ?? 30);
 
         // Создание записи URL
         var url = new Url
@@ -75,7 +47,6 @@ public class UrlService(
             UserId = request.UserId,
             CreatedAt = DateTime.UtcNow,
             ExpiresAt = expiresAt,
-            CustomCode = !string.IsNullOrEmpty(request.CustomCode) ? request.CustomCode : null,
             IsActive = true
         };
 
@@ -87,34 +58,12 @@ public class UrlService(
             Id = url.Id,
             OriginalUrl = url.OriginalUrl,
             ShortCode = url.ShortCode,
-            ShortUrl = GetFullShortUrl(shortCode),
+            ShortUrl = $"{_baseUrl}/{shortCode}",
             UserId = url.UserId,
             CreatedAt = url.CreatedAt,
             ExpiresAt = url.ExpiresAt,
             IsActive = url.IsActive,
             ClickCount = 0
-        };
-    }
-
-    public async Task<UrlResponse> GetUrlByShortCodeAsync(string shortCode)
-    {
-        var url = await urlRepository.GetByShortCodeAsync(shortCode);
-        if (url == null)
-            return null;
-
-        int clickCount = await clickDataRepository.GetClickCountByUrlIdAsync(url.Id);
-
-        return new UrlResponse
-        {
-            Id = url.Id,
-            OriginalUrl = url.OriginalUrl,
-            ShortCode = url.ShortCode,
-            ShortUrl = GetFullShortUrl(shortCode),
-            UserId = url.UserId,
-            CreatedAt = url.CreatedAt,
-            ExpiresAt = url.ExpiresAt,
-            IsActive = url.IsActive,
-            ClickCount = clickCount
         };
     }
 
@@ -132,7 +81,7 @@ public class UrlService(
                 Id = url.Id,
                 OriginalUrl = url.OriginalUrl,
                 ShortCode = url.ShortCode,
-                ShortUrl = GetFullShortUrl(url.ShortCode),
+                ShortUrl = $"{_baseUrl}/{url.ShortCode}",
                 UserId = url.UserId,
                 CreatedAt = url.CreatedAt,
                 ExpiresAt = url.ExpiresAt,
@@ -150,71 +99,57 @@ public class UrlService(
         if (url == null || url.UserId != userId)
             return false;
 
-        await urlRepository.DeleteAsync(url);
+        // В MVP версии просто деактивируем URL вместо удаления
+        url.IsActive = false;
+        await urlRepository.UpdateAsync(url);
         await urlRepository.SaveChangesAsync();
         return true;
+    }
+
+    public async Task<UrlResponse> GetUrlByShortCodeAsync(string shortCode)
+    {
+        var url = await urlRepository.GetByShortCodeAsync(shortCode);
+
+        if (url == null || !url.IsActive || (url.ExpiresAt.HasValue && url.ExpiresAt < DateTime.UtcNow))
+        {
+            return null;
+        }
+
+        int clickCount = await clickDataRepository.GetClickCountByUrlIdAsync(url.Id);
+
+        return new UrlResponse
+        {
+            Id = url.Id,
+            OriginalUrl = url.OriginalUrl,
+            ShortCode = url.ShortCode,
+            ShortUrl = $"{_baseUrl}/{url.ShortCode}",
+            UserId = url.UserId,
+            CreatedAt = url.CreatedAt,
+            ExpiresAt = url.ExpiresAt,
+            IsActive = url.IsActive,
+            ClickCount = clickCount
+        };
     }
 
     public async Task<string> RedirectAndTrackAsync(string shortCode, string ipAddress, string userAgent,
         string referer)
     {
         var url = await urlRepository.GetByShortCodeAsync(shortCode);
-        if (url == null || !url.IsActive)
-            return null;
 
-        // Проверка срока действия
-        if (url.ExpiresAt.HasValue && url.ExpiresAt.Value < DateTime.UtcNow)
+        // Проверяем, существует и активна ли ссылка
+        if (url == null || !url.IsActive || (url.ExpiresAt.HasValue && url.ExpiresAt < DateTime.UtcNow))
         {
-            url.IsActive = false;
-            await urlRepository.UpdateAsync(url);
-            await urlRepository.SaveChangesAsync();
             return null;
         }
 
-        // Определение устройства и браузера из User-Agent
-        string deviceType = "Unknown";
-        string browser = "Unknown";
-
-        // Простой парсинг User-Agent для определения устройства и браузера
-        if (!string.IsNullOrEmpty(userAgent))
-        {
-            // Определение устройства
-            if (userAgent.Contains("Mobile") || userAgent.Contains("Android") || userAgent.Contains("iPhone"))
-                deviceType = "Mobile";
-            else if (userAgent.Contains("iPad") || userAgent.Contains("Tablet"))
-                deviceType = "Tablet";
-            else
-                deviceType = "Desktop";
-
-            // Определение браузера
-            if (userAgent.Contains("Chrome") && !userAgent.Contains("Edg"))
-                browser = "Chrome";
-            else if (userAgent.Contains("Firefox"))
-                browser = "Firefox";
-            else if (userAgent.Contains("Safari") && !userAgent.Contains("Chrome"))
-                browser = "Safari";
-            else if (userAgent.Contains("Edg"))
-                browser = "Edge";
-            else if (userAgent.Contains("MSIE") || userAgent.Contains("Trident"))
-                browser = "Internet Explorer";
-            else
-                browser = "Other";
-        }
-
-        // Определение страны и города по IP (для MVP используем упрощенную логику)
-        string country = "Unknown";
-        string city = "Unknown";
-
-        // Добавляем информацию о клике
+        // Упрощенная версия для MVP - записываем только базовую информацию о клике
         var clickData = new ClickData
         {
             UrlId = url.Id,
             ClickedAt = DateTime.UtcNow,
             IpAddress = ipAddress,
-            Country = country,
-            City = city,
-            DeviceType = deviceType,
-            Browser = browser,
+            Browser = GetSimpleBrowser(userAgent),
+            DeviceType = GetSimpleDeviceType(userAgent),
             ReferrerUrl = referer
         };
 
@@ -224,31 +159,28 @@ public class UrlService(
         return url.OriginalUrl;
     }
 
-    public async Task<bool> IsUserAllowedToCreateMoreUrlsAsync(int? userId)
+    // Простые вспомогательные методы для MVP
+    private string GetSimpleBrowser(string userAgent)
     {
-        // Лимиты URL для разных типов пользователей
-        int freeAnonymousLimit = 10;
-        int freeRegisteredLimit = 50;
+        if (string.IsNullOrEmpty(userAgent)) return "Unknown";
 
-        if (!userId.HasValue)
-        {
-            // Для анонимных пользователей мы не можем отследить лимит, но в реальном приложении
-            // можно использовать сессию или cookie для этого
-            return true;
-        }
-
-        // Если пользователь премиум - нет ограничений
-        if (await IsUserPremiumAsync(userId.Value))
-        {
-            return true;
-        }
-
-        // Иначе проверяем лимит
-        int userUrlCount = await urlRepository.GetUrlCountByUserIdAsync(userId);
-        return userUrlCount < freeRegisteredLimit;
+        if (userAgent.Contains("Chrome")) return "Chrome";
+        if (userAgent.Contains("Firefox")) return "Firefox";
+        if (userAgent.Contains("Safari")) return "Safari";
+        if (userAgent.Contains("Edge")) return "Edge";
+        return "Other";
     }
 
-    // Вспомогательные методы
+    private string GetSimpleDeviceType(string userAgent)
+    {
+        if (string.IsNullOrEmpty(userAgent)) return "Unknown";
+
+        if (userAgent.Contains("Mobile")) return "Mobile";
+        if (userAgent.Contains("Tablet")) return "Tablet";
+        return "Desktop";
+    }
+
+    // Метод для генерации уникального кода
     private async Task<string> GenerateUniqueShortCodeAsync()
     {
         const string chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -258,29 +190,16 @@ public class UrlService(
 
         while (!isUnique)
         {
-            StringBuilder sb = new StringBuilder(codeLength);
+            var sb = new StringBuilder(codeLength);
             for (int i = 0; i < codeLength; i++)
             {
                 sb.Append(chars[_random.Next(chars.Length)]);
             }
 
             shortCode = sb.ToString();
-
             isUnique = !await urlRepository.ShortCodeExistsAsync(shortCode);
         }
 
         return shortCode;
-    }
-
-    private string GetFullShortUrl(string shortCode)
-    {
-        string baseUrl = configuration["BaseUrl"] ?? "http://localhost:5000";
-        return $"{baseUrl}/{shortCode}";
-    }
-
-    private async Task<bool> IsUserPremiumAsync(int userId)
-    {
-        var user = await userRepository.GetByIdAsync(userId);
-        return user is { IsPremium: true };
     }
 }

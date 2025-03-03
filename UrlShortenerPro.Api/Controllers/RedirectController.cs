@@ -4,22 +4,25 @@ using UrlShortenerPro.Core.Interfaces;
 namespace UrlShortenerPro.Api.Controllers;
 
 [ApiController]
-[Route("")]
 public class RedirectController(IUrlService urlService) : ControllerBase
 {
-    // GET /{shortCode}
-    [HttpGet("{shortCode}")]
-    public async Task<IActionResult> RedirectToUrl(string shortCode)
+    [HttpGet("/{shortCode}")]
+    public new async Task<IActionResult> Redirect(string shortCode)
     {
-        string ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "0.0.0.0";
-        string userAgent = Request.Headers["User-Agent"].ToString();
-        string referer = Request.Headers["Referer"].ToString();
-            
-        string originalUrl = await urlService.RedirectAndTrackAsync(shortCode, ipAddress, userAgent, referer);
-            
-        if (string.IsNullOrEmpty(originalUrl))
-            return NotFound();
-                
-        return Redirect(originalUrl);
+        // Получаем IP, User-Agent и Referer из запроса
+        string ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "Unknown";
+        string userAgent = HttpContext.Request.Headers["User-Agent"].ToString();
+        string referer = HttpContext.Request.Headers["Referer"].ToString();
+
+        // Использование RedirectAndTrackAsync вместо отдельного вызова RecordClickAsync
+        var originalUrl = await urlService.RedirectAndTrackAsync(shortCode, ipAddress, userAgent, referer);
+
+        if (originalUrl == null)
+        {
+            return NotFound(new { message = "Short URL not found or expired" });
+        }
+
+        // Перенаправляем на оригинальный URL
+        return await Redirect(originalUrl);
     }
 }

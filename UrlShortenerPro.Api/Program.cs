@@ -1,8 +1,8 @@
-using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using System.Text;
 using UrlShortenerPro.Core.Interfaces;
 using UrlShortenerPro.Core.Services;
 using UrlShortenerPro.Infrastructure.Data;
@@ -43,9 +43,9 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
-// Добавление конфигурации БД
+// Добавление конфигурации БД с PostgreSQL вместо SQL Server
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")!));
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 // Добавление репозиториев
 builder.Services.AddScoped<IUrlRepository, UrlRepository>();
@@ -60,9 +60,9 @@ builder.Services.AddScoped<IUserService, UserService>();
 // Настройка CORS
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAll", corsPolicyBuilder =>
+    options.AddPolicy("AllowAll", builder =>
     {
-        corsPolicyBuilder.AllowAnyOrigin()
+        builder.AllowAnyOrigin()
                .AllowAnyMethod()
                .AllowAnyHeader();
     });
@@ -103,10 +103,15 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+// Важно: порядок имеет значение!
+// UseRouting должен быть до UseEndpoints и после UseAuthentication/UseAuthorization
 app.UseHttpsRedirection();
 app.UseCors("AllowAll");
 app.UseAuthentication();
 app.UseAuthorization();
+
+// Маршрутизация и endpoints
+app.UseRouting();
 app.MapControllers();
 
 // Применение миграций БД при запуске
