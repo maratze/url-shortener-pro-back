@@ -127,31 +127,25 @@ public class UserService(IUserRepository userRepository, IConfiguration configur
     // Вспомогательный метод для генерации JWT токена
     private string GenerateJwtToken(User user)
     {
-        var jwtKey = configuration["JwtSettings:Key"];
-        if (string.IsNullOrEmpty(jwtKey))
-        {
-            jwtKey = "default_development_key_that_is_at_least_32_chars";
-        }
+        var tokenHandler = new JwtSecurityTokenHandler();
+        var key = Encoding.ASCII.GetBytes(configuration["JwtSettings:Key"] ?? "default_key_at_least_32_characters_long");
 
-        var claims = new[]
+        var tokenDescriptor = new SecurityTokenDescriptor
         {
-            new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
-            new Claim(JwtRegisteredClaimNames.Email, user.Email),
-            new Claim("premium", user.IsPremium.ToString()),
-            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
+            Subject = new ClaimsIdentity([
+                new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
+                new Claim(ClaimTypes.Email, user.Email ?? string.Empty)
+            ]),
+            Expires = DateTime.UtcNow.AddDays(7), // Токен действителен 7 дней
+            Issuer = configuration["JwtSettings:Issuer"],
+            Audience = configuration["JwtSettings:Audience"],
+            SigningCredentials = new SigningCredentials(
+                new SymmetricSecurityKey(key), 
+                SecurityAlgorithms.HmacSha256Signature
+            )
         };
 
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
-        var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
-
-        var token = new JwtSecurityToken(
-            issuer: configuration["JwtSettings:Issuer"] ?? "UrlShortenerPro",
-            audience: configuration["JwtSettings:Audience"] ?? "UrlShortenerUsers",
-            claims: claims,
-            expires: DateTime.UtcNow.AddDays(7),
-            signingCredentials: creds
-        );
-
-        return new JwtSecurityTokenHandler().WriteToken(token);
+        var token = tokenHandler.CreateToken(tokenDescriptor);
+        return tokenHandler.WriteToken(token);
     }
 }

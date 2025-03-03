@@ -17,7 +17,7 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new OpenApiInfo { Title = "URL Shortener Pro API", Version = "v1" });
-    
+
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
         Description = "JWT Authorization header using the Bearer scheme",
@@ -26,7 +26,7 @@ builder.Services.AddSwaggerGen(c =>
         Type = SecuritySchemeType.ApiKey,
         Scheme = "Bearer"
     });
-    
+
     c.AddSecurityRequirement(new OpenApiSecurityRequirement
     {
         {
@@ -63,8 +63,8 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowAll", builder =>
     {
         builder.AllowAnyOrigin()
-               .AllowAnyMethod()
-               .AllowAnyHeader();
+            .AllowAnyMethod()
+            .AllowAnyHeader();
     });
 });
 
@@ -72,26 +72,44 @@ builder.Services.AddCors(options =>
 var jwtKey = builder.Configuration["JwtSettings:Key"];
 if (string.IsNullOrEmpty(jwtKey))
 {
-    jwtKey = "default_development_key_that_is_at_least_32_chars";
+    jwtKey = "XLMwk2Xg7oKpuBXQLXqv9zWyXMrgUUEoul5jwlXpDD4=";
 }
 
-builder.Services.AddAuthentication(options =>
-{
-    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-})
-.AddJwtBearer(options =>
-{
-    options.TokenValidationParameters = new TokenValidationParameters
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
     {
-        ValidateIssuer = true,
-        ValidateAudience = true,
-        ValidateLifetime = true,
-        ValidateIssuerSigningKey = true,
-        ValidIssuer = builder.Configuration["JwtSettings:Issuer"] ?? "UrlShortenerPro",
-        ValidAudience = builder.Configuration["JwtSettings:Audience"] ?? "UrlShortenerUsers",
-        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
-    };
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = builder.Configuration["JwtSettings:Issuer"] ?? "UrlShortenerPro",
+            ValidAudience = builder.Configuration["JwtSettings:Audience"] ?? "UrlShortenerUsers",
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
+            ClockSkew = TimeSpan.Zero // Уменьшаем допустимое расхождение времени
+        };
+
+        // Добавляем обработку событий для более подробной отладки
+        options.Events = new JwtBearerEvents
+        {
+            OnAuthenticationFailed = context =>
+            {
+                Console.WriteLine($"Authentication failed: {context.Exception.Message}");
+                return Task.CompletedTask;
+            }
+        };
+    });
+
+// Добавляем в Program.cs для диагностики
+builder.Services.AddLogging(logging =>
+{
+    logging.ClearProviders();
+    logging.AddConsole();
+    logging.AddDebug();
+
+    // Устанавливаем уровень логирования для Microsoft.AspNetCore.Authentication на Debug
+    logging.AddFilter("Microsoft.AspNetCore.Authentication", LogLevel.Debug);
 });
 
 var app = builder.Build();
@@ -103,16 +121,15 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-// Важно: порядок имеет значение!
-// UseRouting должен быть до UseEndpoints и после UseAuthentication/UseAuthorization
+// Важно: порядок middleware имеет значение!
 app.UseHttpsRedirection();
 app.UseCors("AllowAll");
-app.UseAuthentication();
-app.UseAuthorization();
 
-// Маршрутизация и endpoints
-app.UseRouting();
-app.MapControllers();
+// ПРАВИЛЬНЫЙ ПОРЯДОК для routing и auth middleware
+app.UseRouting(); // Сначала routing
+app.UseAuthentication(); // Затем authentication
+app.UseAuthorization(); // Затем authorization
+app.MapControllers(); // И наконец endpoints
 
 // Применение миграций БД при запуске
 using (var scope = app.Services.CreateScope())
