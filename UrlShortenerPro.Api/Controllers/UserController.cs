@@ -33,10 +33,10 @@ public class UserController : ControllerBase
                 return BadRequest(new { message = "Email не указан" });
             }
 
-            if (!IsValidEmail(request.Email))
-            {
-                return BadRequest(new { message = "Указан некорректный формат email" });
-            }
+            // if (!IsValidгоEmail(request.Email))
+            // {
+            //     return BadRequest(new { message = "Указан некорректный формат email" });
+            // }
 
             // Валидация пароля
             if (string.IsNullOrEmpty(request.Password))
