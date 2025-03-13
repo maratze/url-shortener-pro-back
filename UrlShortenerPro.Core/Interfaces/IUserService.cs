@@ -9,4 +9,5 @@ public interface IUserService
     Task<UserResponse> GetByIdAsync(int id);
     Task<UserResponse> UpgradeToPremiumAsync(int userId);
     Task<bool> IsEmailAvailableAsync(string email);
+    Task<UserResponse> AuthenticateWithOAuthAsync(OAuthRequest request);
 }

@@ -124,6 +124,54 @@ public class UserService(IUserRepository userRepository, IConfiguration configur
         return !await userRepository.EmailExistsAsync(email);
     }
 
+    public async Task<UserResponse> AuthenticateWithOAuthAsync(OAuthRequest request)
+    {
+        if (string.IsNullOrEmpty(request.Email))
+        {
+            throw new InvalidOperationException("Email не предоставлен провайдером OAuth");
+        }
+
+        // Проверяем, существует ли пользователь с таким email
+        var user = await userRepository.GetByEmailAsync(request.Email);
+
+        // Если пользователя нет, регистрируем нового
+        if (user == null)
+        {
+            user = new User
+            {
+                Email = request.Email,
+                // Сгенерируем случайный пароль, который пользователь не будет использовать
+                // (поскольку они будут входить через OAuth)
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword(Guid.NewGuid().ToString()),
+                IsPremium = false,
+                CreatedAt = DateTime.UtcNow,
+                LastLoginAt = DateTime.UtcNow
+            };
+
+            await userRepository.AddAsync(user);
+            await userRepository.SaveChangesAsync();
+        }
+        else
+        {
+            // Обновляем время последнего входа
+            user.LastLoginAt = DateTime.UtcNow;
+            await userRepository.UpdateAsync(user);
+            await userRepository.SaveChangesAsync();
+        }
+
+        // Генерация токена
+        string token = GenerateJwtToken(user);
+
+        return new UserResponse
+        {
+            Id = user.Id,
+            Email = user.Email,
+            IsPremium = user.IsPremium,
+            CreatedAt = user.CreatedAt,
+            Token = token
+        };
+    }
+
     // Вспомогательный метод для генерации JWT токена
     private string GenerateJwtToken(User user)
     {

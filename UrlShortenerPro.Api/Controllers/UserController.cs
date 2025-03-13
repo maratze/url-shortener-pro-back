@@ -186,6 +186,45 @@ public class UserController : ControllerBase
         }
     }
 
+    // POST api/users/oauth/{provider}
+    [HttpPost("oauth/{provider}")]
+    public async Task<ActionResult<UserResponse>> AuthenticateWithOAuth(string provider, [FromBody] OAuthRequest request)
+    {
+        try
+        {
+            // Проверка данных
+            if (string.IsNullOrEmpty(request.Token))
+            {
+                return BadRequest(new { message = "Токен OAuth отсутствует" });
+            }
+
+            // Устанавливаем провайдера из URL
+            request.Provider = provider;
+
+            // Дополнительная проверка для Google OAuth
+            if (provider.ToLower() == "google" && string.IsNullOrEmpty(request.Email))
+            {
+                return BadRequest(new { message = "Email не предоставлен" });
+            }
+
+            var result = await _userService.AuthenticateWithOAuthAsync(request);
+            _logger.LogInformation("Пользователь с email {Email} успешно вошел через {Provider}", 
+                request.Email, provider);
+            
+            return Ok(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning("Ошибка при OAuth аутентификации: {Message}", ex.Message);
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Необработанная ошибка при OAuth аутентификации");
+            return StatusCode(500, new { message = "Произошла ошибка при OAuth аутентификации" });
+        }
+    }
+
     // Вспомогательный метод для валидации email
     private static bool IsValidEmail(string email)
     {
