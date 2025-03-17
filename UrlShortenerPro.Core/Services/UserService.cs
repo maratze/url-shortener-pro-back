@@ -44,6 +44,8 @@ public class UserService(IUserRepository userRepository, IConfiguration configur
         {
             Id = user.Id,
             Email = user.Email,
+            FirstName = user.FirstName,
+            LastName = user.LastName,
             IsPremium = user.IsPremium,
             CreatedAt = user.CreatedAt,
             Token = token
@@ -77,6 +79,8 @@ public class UserService(IUserRepository userRepository, IConfiguration configur
         {
             Id = user.Id,
             Email = user.Email,
+            FirstName = user.FirstName,
+            LastName = user.LastName,
             IsPremium = user.IsPremium,
             CreatedAt = user.CreatedAt,
             Token = token
@@ -93,6 +97,33 @@ public class UserService(IUserRepository userRepository, IConfiguration configur
         {
             Id = user.Id,
             Email = user.Email,
+            FirstName = user.FirstName,
+            LastName = user.LastName,
+            IsPremium = user.IsPremium,
+            CreatedAt = user.CreatedAt,
+            Token = null
+        };
+    }
+
+    public async Task<UserResponse> UpdateProfileAsync(int userId, UpdateProfileRequest request)
+    {
+        var user = await userRepository.GetByIdAsync(userId);
+        if (user == null)
+            return null;
+
+        // Обновляем данные пользователя
+        user.FirstName = request.FirstName;
+        user.LastName = request.LastName;
+
+        await userRepository.UpdateAsync(user);
+        await userRepository.SaveChangesAsync();
+
+        return new UserResponse
+        {
+            Id = user.Id,
+            Email = user.Email,
+            FirstName = user.FirstName,
+            LastName = user.LastName,
             IsPremium = user.IsPremium,
             CreatedAt = user.CreatedAt,
             Token = null
@@ -113,6 +144,8 @@ public class UserService(IUserRepository userRepository, IConfiguration configur
         {
             Id = user.Id,
             Email = user.Email,
+            FirstName = user.FirstName,
+            LastName = user.LastName,
             IsPremium = user.IsPremium,
             CreatedAt = user.CreatedAt,
             Token = GenerateJwtToken(user)
@@ -166,6 +199,8 @@ public class UserService(IUserRepository userRepository, IConfiguration configur
         {
             Id = user.Id,
             Email = user.Email,
+            FirstName = user.FirstName,
+            LastName = user.LastName,
             IsPremium = user.IsPremium,
             CreatedAt = user.CreatedAt,
             Token = token

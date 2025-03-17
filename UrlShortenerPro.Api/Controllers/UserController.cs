@@ -225,6 +225,37 @@ public class UserController : ControllerBase
         }
     }
 
+    // PUT api/users/profile
+    [HttpPut("profile")]
+    [Authorize]
+    public async Task<ActionResult<UserResponse>> UpdateProfile([FromBody] UpdateProfileRequest request)
+    {
+        try
+        {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier);
+            if (userIdClaim == null || !int.TryParse(userIdClaim.Value, out int userId))
+            {
+                _logger.LogWarning("Не удалось получить ID пользователя из токена");
+                return Unauthorized(new { message = "Недействительный токен" });
+            }
+
+            var user = await _userService.UpdateProfileAsync(userId, request);
+            if (user == null)
+            {
+                _logger.LogWarning("Пользователь с ID {UserId} не найден при обновлении профиля", userId);
+                return NotFound(new { message = "Пользователь не найден" });
+            }
+
+            _logger.LogInformation("Профиль пользователя с ID {UserId} успешно обновлен", userId);
+            return Ok(user);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Ошибка при обновлении профиля пользователя");
+            return StatusCode(500, new { message = "Произошла ошибка при обновлении профиля" });
+        }
+    }
+
     // Вспомогательный метод для валидации email
     private static bool IsValidEmail(string email)
     {
