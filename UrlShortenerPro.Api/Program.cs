@@ -7,21 +7,75 @@ using UrlShortenerPro.Api.Middleware;
 using UrlShortenerPro.Core.Interfaces;
 using UrlShortenerPro.Core.Services;
 using UrlShortenerPro.Infrastructure.Data;
-using UrlShortenerPro.Infrastructure.Interfaces;
 using UrlShortenerPro.Infrastructure.Repositories;
+using UrlShortenerPro.Infrastructure.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Добавление сервисов
+// Add services to the container.
 builder.Services.AddControllers();
+
+// Configure DbContext for PostgreSQL
+builder.Services.AddDbContext<AppDbContext>(options =>
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+// Register repositories
+builder.Services.AddScoped<IUserRepository, UserRepository>();
+builder.Services.AddScoped<IUrlRepository, UrlRepository>();
+builder.Services.AddScoped<IClickDataRepository, ClickDataRepository>();
+builder.Services.AddScoped<IUserSessionRepository, UserSessionRepository>();
+builder.Services.AddScoped<IClientUsageRepository, ClientUsageRepository>();
+
+// Register services
+builder.Services.AddScoped<IUserService, UserService>();
+builder.Services.AddScoped<IUrlService, UrlService>();
+builder.Services.AddScoped<IAnalyticsService, AnalyticsService>();
+builder.Services.AddScoped<ITokenService, TokenService>();
+builder.Services.AddScoped<IJwtService, JwtService>();
+builder.Services.AddScoped<IUserSessionService, UserSessionService>();
+builder.Services.AddScoped<IClientTrackingService, UrlShortenerPro.Infrastructure.Services.ClientTrackingService>();
+
+// Configure JWT authentication
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+})
+.AddJwtBearer(options =>
+{
+    options.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuer = true,
+        ValidateAudience = true,
+        ValidateLifetime = true,
+        ValidateIssuerSigningKey = true,
+        ValidIssuer = builder.Configuration["Jwt:Issuer"],
+        ValidAudience = builder.Configuration["Jwt:Audience"],
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"] ?? "DefaultSecretKeyForDevelopment1234567890"))
+    };
+});
+
+// Configure CORS
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowSpecificOrigin",
+        builder => builder
+            .WithOrigins("http://localhost:3000") // Frontend URL
+            .AllowAnyMethod()
+            .AllowAnyHeader()
+            .AllowCredentials());
+});
+
+// Configure Swagger
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new OpenApiInfo { Title = "URL Shortener Pro API", Version = "v1" });
-
+    
+    // Configure Swagger to use JWT Authentication
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
-        Description = "JWT Authorization header using the Bearer scheme",
+        Description = "JWT Authorization header using the Bearer scheme. Example: \"Authorization: Bearer {token}\"",
         Name = "Authorization",
         In = ParameterLocation.Header,
         Type = SecuritySchemeType.ApiKey,
@@ -39,117 +93,34 @@ builder.Services.AddSwaggerGen(c =>
                     Id = "Bearer"
                 }
             },
-            Array.Empty<string>()
+            new string[] {}
         }
     });
 });
 
-// Добавление конфигурации БД с PostgreSQL вместо SQL Server
-builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
-
-// Добавление репозиториев
-builder.Services.AddScoped<IUrlRepository, UrlRepository>();
-builder.Services.AddScoped<IClickDataRepository, ClickDataRepository>();
-builder.Services.AddScoped<IUserRepository, UserRepository>();
-
-// Добавление сервисов
-builder.Services.AddScoped<IUrlService, UrlService>();
-builder.Services.AddScoped<IAnalyticsService, AnalyticsService>();
-builder.Services.AddScoped<IUserService, UserService>();
-builder.Services.AddScoped<IJwtService, JwtService>();
-builder.Services.AddScoped<IClientUsageRepository, ClientUsageRepository>();
-builder.Services.AddScoped<IClientTrackingService, ClientTrackingService>();
-
-
-// Настройка CORS
-builder.Services.AddCors(options =>
-{
-    options.AddPolicy("CorsPolicy",
-        corsPolicyBuilder => corsPolicyBuilder
-            .WithOrigins("http://localhost:3000") // Явно указываем домен фронтенда
-            .AllowAnyMethod()
-            .AllowAnyHeader()
-            .AllowCredentials()); // Разрешаем передачу учетных данных
-});
-
-// Настройка JWT аутентификации
-var jwtKey = builder.Configuration["JwtSettings:Key"];
-if (string.IsNullOrEmpty(jwtKey))
-{
-    jwtKey = "XLMwk2Xg7oKpuBXQLXqv9zWyXMrgUUEoul5jwlXpDD4=";
-}
-
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
-    {
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = true,
-            ValidateAudience = true,
-            ValidateLifetime = true,
-            ValidateIssuerSigningKey = true,
-            ValidIssuer = builder.Configuration["JwtSettings:Issuer"] ?? "UrlShortenerPro",
-            ValidAudience = builder.Configuration["JwtSettings:Audience"] ?? "UrlShortenerUsers",
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
-            ClockSkew = TimeSpan.Zero // Уменьшаем допустимое расхождение времени
-        };
-
-        // Добавляем обработку событий для более подробной отладки
-        options.Events = new JwtBearerEvents
-        {
-            OnAuthenticationFailed = context =>
-            {
-                Console.WriteLine($"Authentication failed: {context.Exception.Message}");
-                return Task.CompletedTask;
-            }
-        };
-    });
-
-// Добавляем в Program.cs для диагностики
-builder.Services.AddLogging(logging =>
-{
-    logging.ClearProviders();
-    logging.AddConsole();
-    logging.AddDebug();
-
-    // Устанавливаем уровень логирования для Microsoft.AspNetCore.Authentication на Debug
-    logging.AddFilter("Microsoft.AspNetCore.Authentication", LogLevel.Debug);
-});
-
 var app = builder.Build();
 
-// Конфигурация HTTP request pipeline
+// Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
 
-// Важно: порядок middleware имеет значение!
 app.UseHttpsRedirection();
-app.UseCors("CorsPolicy");
-app.UseRouting();
-app.UseJwtMiddleware(); // Наш custom middleware для отладки JWT
-app.UseAuthentication();  // Сначала аутентификация
-app.UseAuthorization();   // Затем авторизация
-app.MapControllers(); // И наконец endpoints
 
+app.UseCors("AllowSpecificOrigin");
 
-// Применение миграций БД при запуске
+app.UseAuthentication();
+app.UseAuthorization();
+
+app.MapControllers();
+
+// Ensure database is created and migrations are applied
 using (var scope = app.Services.CreateScope())
 {
-    var services = scope.ServiceProvider;
-    try
-    {
-        var context = services.GetRequiredService<AppDbContext>();
-        context.Database.Migrate();
-    }
-    catch (Exception ex)
-    {
-        var logger = services.GetRequiredService<ILogger<Program>>();
-        logger.LogError(ex, "An error occurred while migrating the database.");
-    }
+    var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    dbContext.Database.Migrate();
 }
 
 app.Run();

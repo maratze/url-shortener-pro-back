@@ -1,103 +1,162 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using UrlShortenerPro.Core.Dtos;
+using UrlShortenerPro.Core.Interfaces;
 using UrlShortenerPro.Infrastructure.Data;
-using UrlShortenerPro.Infrastructure.Interfaces;
 using UrlShortenerPro.Infrastructure.Models;
 
 namespace UrlShortenerPro.Infrastructure.Repositories;
 
-public class ClickDataRepository(AppDbContext context) : Repository<ClickData>(context), IClickDataRepository
+public class ClickDataRepository : IClickDataRepository
 {
-    public async Task<IEnumerable<ClickData>> GetByUrlIdAsync(int urlId)
+    private readonly AppDbContext _dbContext;
+    private readonly ILogger<ClickDataRepository> _logger;
+
+    public ClickDataRepository(AppDbContext dbContext, ILogger<ClickDataRepository> logger)
     {
-        return await DbSet
-            .Where(c => c.UrlId == urlId)
-            .OrderByDescending(c => c.ClickedAt)
-            .ToListAsync();
+        _dbContext = dbContext;
+        _logger = logger;
     }
 
-    public async Task<IEnumerable<ClickData>> GetByUrlIdAndDateRangeAsync(int urlId, DateTime startDate,
-        DateTime endDate)
-    {
-        return await DbSet
-            .Where(c => c.UrlId == urlId && c.ClickedAt >= startDate && c.ClickedAt <= endDate)
-            .OrderByDescending(c => c.ClickedAt)
-            .ToListAsync();
-    }
-
-    public async Task<int> GetClickCountByUrlIdAsync(int urlId)
-    {
-        return await DbSet.CountAsync(c => c.UrlId == urlId);
-    }
-
-    public async Task<Dictionary<string, int>> GetDeviceStatsByUrlIdAsync(int urlId)
-    {
-        return await DbSet
-            .Where(c => c.UrlId == urlId)
-            .GroupBy(c => c.DeviceType)
-            .Select(g => new { DeviceType = g.Key, Count = g.Count() })
-            .ToDictionaryAsync(x => x.DeviceType, x => x.Count);
-    }
-
-    public async Task<Dictionary<string, int>> GetBrowserStatsByUrlIdAsync(int urlId)
-    {
-        return await DbSet
-            .Where(c => c.UrlId == urlId)
-            .GroupBy(c => c.Browser)
-            .Select(g => new { Browser = g.Key, Count = g.Count() })
-            .ToDictionaryAsync(x => x.Browser, x => x.Count);
-    }
-
-    public async Task<Dictionary<string, int>> GetLocationStatsByUrlIdAsync(int urlId)
-    {
-        return await DbSet
-            .Where(c => c.UrlId == urlId)
-            .GroupBy(c => c.Country)
-            .Select(g => new { Country = g.Key, Count = g.Count() })
-            .ToDictionaryAsync(x => x.Country, x => x.Count);
-    }
-
-    // Новые методы для PostgreSQL версии
-    public async Task<Dictionary<string, int>> GetReferrerStatsByUrlIdAsync(int urlId)
-    {
-        var referrerStats = await DbSet
-            .Where(c => c.UrlId == urlId)
-            .GroupBy(c => string.IsNullOrEmpty(c.ReferrerUrl) ? "Direct" : ExtractDomain(c.ReferrerUrl))
-            .Select(g => new { Referrer = g.Key, Count = g.Count() })
-            .ToDictionaryAsync(x => x.Referrer, x => x.Count);
-
-        return referrerStats;
-    }
-
-    public async Task<Dictionary<int, int>> GetHourlyStatsByUrlIdAsync(int urlId)
-    {
-        var clicks = await DbSet
-            .Where(c => c.UrlId == urlId)
-            .ToListAsync();
-                
-        var hourlyStats = clicks
-            .GroupBy(c => c.ClickedAt.Hour)
-            .ToDictionary(g => g.Key, g => g.Count());
-
-        return hourlyStats;
-    }
-
-    // Вспомогательный метод для извлечения домена из URL
-    private string ExtractDomain(string url)
+    public async Task<ClickDataDto> CreateAsync(ClickDataDto clickDataDto)
     {
         try
         {
-            if (string.IsNullOrEmpty(url))
-                return "Unknown";
-
-            if (!url.StartsWith("http"))
-                url = "http://" + url;
-
-            var uri = new Uri(url);
-            return uri.Host;
+            var clickData = MapToEntity(clickDataDto);
+            _dbContext.ClickData.Add(clickData);
+            await _dbContext.SaveChangesAsync();
+            return MapToDto(clickData);
         }
-        catch
+        catch (Exception ex)
         {
-            return "Invalid URL";
+            _logger.LogError(ex, "Error creating click data for URL ID {UrlId}", clickDataDto.UrlId);
+            throw;
         }
+    }
+
+    public async Task<List<ClickDataDto>> GetByUrlIdAsync(int urlId, int page = 1, int pageSize = 20)
+    {
+        try
+        {
+            var skip = (page - 1) * pageSize;
+
+            var clickData = await _dbContext.ClickData
+                .AsNoTracking()
+                .Where(c => c.UrlId == urlId)
+                .OrderByDescending(c => c.ClickedAt)
+                .Skip(skip)
+                .Take(pageSize)
+                .ToListAsync();
+
+            return clickData.Select(MapToDto).ToList();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving click data for URL ID {UrlId}", urlId);
+            return new List<ClickDataDto>();
+        }
+    }
+
+    public async Task<List<ClickDataDto>> GetByUrlIdAndDateRangeAsync(int urlId, DateTime startDate, DateTime endDate)
+    {
+        try
+        {
+            var clickData = await _dbContext.ClickData
+                .AsNoTracking()
+                .Where(c => c.UrlId == urlId && 
+                            c.ClickedAt >= startDate && 
+                            c.ClickedAt <= endDate)
+                .OrderByDescending(c => c.ClickedAt)
+                .ToListAsync();
+
+            return clickData.Select(MapToDto).ToList();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving click data for URL ID {UrlId} in date range", urlId);
+            return new List<ClickDataDto>();
+        }
+    }
+
+    public async Task<int> GetTotalClicksAsync()
+    {
+        try
+        {
+            return await _dbContext.ClickData.CountAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting total clicks count");
+            return 0;
+        }
+    }
+
+    public async Task<int> GetTotalClicksForUrlAsync(int urlId)
+    {
+        try
+        {
+            return await _dbContext.ClickData.CountAsync(c => c.UrlId == urlId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting click count for URL ID {UrlId}", urlId);
+            return 0;
+        }
+    }
+
+    public async Task<int> GetTotalClicksForUserAsync(int userId)
+    {
+        try
+        {
+            return await _dbContext.ClickData
+                .Join(_dbContext.Urls,
+                    click => click.UrlId,
+                    url => url.Id,
+                    (click, url) => new { click, url })
+                .Where(x => x.url.UserId == userId)
+                .CountAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting total clicks for user {UserId}", userId);
+            return 0;
+        }
+    }
+
+    // Helper methods to map between entity and DTO
+    private ClickDataDto MapToDto(ClickData clickData)
+    {
+        return new ClickDataDto
+        {
+            Id = clickData.Id,
+            UrlId = clickData.UrlId,
+            IpAddress = clickData.IpAddress,
+            UserAgent = clickData.UserAgent,
+            ReferrerUrl = clickData.ReferrerUrl,
+            DeviceType = clickData.DeviceType,
+            Browser = clickData.Browser,
+            OperatingSystem = clickData.OperatingSystem,
+            Country = clickData.Country,
+            City = clickData.City,
+            ClickedAt = clickData.ClickedAt
+        };
+    }
+
+    private ClickData MapToEntity(ClickDataDto clickDataDto)
+    {
+        return new ClickData
+        {
+            Id = clickDataDto.Id,
+            UrlId = clickDataDto.UrlId,
+            IpAddress = clickDataDto.IpAddress,
+            UserAgent = clickDataDto.UserAgent,
+            ReferrerUrl = clickDataDto.ReferrerUrl,
+            DeviceType = clickDataDto.DeviceType,
+            Browser = clickDataDto.Browser,
+            OperatingSystem = clickDataDto.OperatingSystem,
+            Country = clickDataDto.Country,
+            City = clickDataDto.City,
+            ClickedAt = clickDataDto.ClickedAt
+        };
     }
 }

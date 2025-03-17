@@ -2,41 +2,47 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
+using UrlShortenerPro.Core.Dtos;
 using UrlShortenerPro.Core.Interfaces;
-using UrlShortenerPro.Infrastructure.Models;
 
 namespace UrlShortenerPro.Core.Services;
 
-public class JwtService(IConfiguration configuration) : IJwtService
+public class JwtService : IJwtService
 {
-    private readonly string _jwtKey = configuration["JwtSettings:Key"]!;
-    private readonly string _issuer = configuration["JwtSettings:Issuer"]!;
-    private readonly string _audience = configuration["JwtSettings:Audience"]!;
-    private readonly int _expiryInMinutes = int.Parse(configuration["JwtSettings:DurationInMinutes"] ?? "60");
+    private readonly IConfiguration _configuration;
+    private readonly ILogger<JwtService> _logger;
 
-    public string GenerateToken(User user)
+    public JwtService(IConfiguration configuration, ILogger<JwtService> logger)
+    {
+        _configuration = configuration;
+        _logger = logger;
+    }
+
+    public string GenerateToken(UserDto user)
     {
         var tokenHandler = new JwtSecurityTokenHandler();
-        var key = Encoding.UTF8.GetBytes(_jwtKey);
+        var key = Encoding.ASCII.GetBytes(_configuration["Jwt:Key"] ?? throw new InvalidOperationException("JWT key is missing"));
 
         var claims = new List<Claim>
         {
-            new(ClaimTypes.NameIdentifier, user.Id.ToString()),
-            new(ClaimTypes.Email, user.Email ?? string.Empty),
-            new("isPremium", user.IsPremium.ToString())
+            new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
+            new Claim(ClaimTypes.Email, user.Email ?? string.Empty)
         };
+
+        if (!string.IsNullOrEmpty(user.Role))
+        {
+            claims.Add(new Claim(ClaimTypes.Role, user.Role));
+        }
 
         var tokenDescriptor = new SecurityTokenDescriptor
         {
             Subject = new ClaimsIdentity(claims),
-            Expires = DateTime.UtcNow.AddMinutes(_expiryInMinutes),
-            Issuer = _issuer,
-            Audience = _audience,
-            SigningCredentials = new SigningCredentials(
-                new SymmetricSecurityKey(key),
-                SecurityAlgorithms.HmacSha256Signature
-            )
+            Expires = DateTime.UtcNow.AddDays(7),
+            Issuer = _configuration["Jwt:Issuer"],
+            Audience = _configuration["Jwt:Audience"],
+            SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature)
         };
 
         var token = tokenHandler.CreateToken(tokenDescriptor);
@@ -45,41 +51,63 @@ public class JwtService(IConfiguration configuration) : IJwtService
 
     public ClaimsPrincipal? GetPrincipalFromToken(string token)
     {
-        var tokenHandler = new JwtSecurityTokenHandler();
-        var key = Encoding.UTF8.GetBytes(_jwtKey);
-
         try
         {
-            var tokenValidationParameters = new TokenValidationParameters
+            var tokenHandler = new JwtSecurityTokenHandler();
+            var key = Encoding.ASCII.GetBytes(_configuration["Jwt:Key"] ?? throw new InvalidOperationException("JWT key is missing"));
+
+            var validationParameters = new TokenValidationParameters
             {
-                ValidateIssuer = true,
-                ValidateAudience = true,
-                ValidateLifetime = true,
                 ValidateIssuerSigningKey = true,
-                ValidIssuer = _issuer,
-                ValidAudience = _audience,
-                IssuerSigningKey = new SymmetricSecurityKey(key)
+                IssuerSigningKey = new SymmetricSecurityKey(key),
+                ValidateIssuer = true,
+                ValidIssuer = _configuration["Jwt:Issuer"],
+                ValidateAudience = true,
+                ValidAudience = _configuration["Jwt:Audience"],
+                ValidateLifetime = true,
+                ClockSkew = TimeSpan.Zero
             };
 
-            var principal = tokenHandler.ValidateToken(token, tokenValidationParameters, out var validatedToken);
-
-            if (!IsJwtWithValidSecurityAlgorithm(validatedToken))
-            {
-                return null;
-            }
-
-            return principal;
+            return tokenHandler.ValidateToken(token, validationParameters, out _);
         }
-        catch
+        catch (Exception ex)
         {
+            _logger.LogError(ex, "Error validating token");
             return null;
         }
     }
-
-    private static bool IsJwtWithValidSecurityAlgorithm(SecurityToken validatedToken)
+    
+    public int? GetUserIdFromToken(string token)
     {
-        return (validatedToken is JwtSecurityToken jwtSecurityToken) &&
-               jwtSecurityToken.Header.Alg.Equals(SecurityAlgorithms.HmacSha256,
-                   StringComparison.InvariantCultureIgnoreCase);
+        var principal = GetPrincipalFromToken(token);
+        if (principal == null)
+        {
+            return null;
+        }
+
+        var userIdClaim = principal.FindFirst(ClaimTypes.NameIdentifier);
+        if (userIdClaim == null || !int.TryParse(userIdClaim.Value, out var userId))
+        {
+            return null;
+        }
+
+        return userId;
+    }
+
+    public string? GetEmailFromToken(string token)
+    {
+        var principal = GetPrincipalFromToken(token);
+        if (principal == null)
+        {
+            return null;
+        }
+
+        var emailClaim = principal.FindFirst(ClaimTypes.Email);
+        return emailClaim?.Value;
+    }
+
+    public bool ValidateToken(string token)
+    {
+        return GetPrincipalFromToken(token) != null;
     }
 }

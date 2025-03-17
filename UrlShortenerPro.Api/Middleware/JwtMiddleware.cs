@@ -1,44 +1,28 @@
-using System.IdentityModel.Tokens.Jwt;
-using UrlShortenerPro.Core.Interfaces;
+using Microsoft.AspNetCore.Http;
 
 namespace UrlShortenerPro.Api.Middleware;
 
-public class JwtMiddleware(RequestDelegate next, ILogger<JwtMiddleware> logger)
+public class JwtMiddleware
 {
-    public async Task InvokeAsync(HttpContext context, IJwtService jwtService)
-    {
-        var token = context.Request.Headers["Authorization"].FirstOrDefault()?.Split(" ").Last();
+    private readonly RequestDelegate _next;
 
+    public JwtMiddleware(RequestDelegate next)
+    {
+        _next = next;
+    }
+
+    public async Task InvokeAsync(HttpContext context)
+    {
+        // This middleware only logs the Authorization header for debugging purposes
+        
+        var token = context.Request.Headers["Authorization"].FirstOrDefault()?.Split(" ").Last();
+        
         if (!string.IsNullOrEmpty(token))
         {
-            try
-            {
-                // Проверка токена для отладки
-                var handler = new JwtSecurityTokenHandler();
-                if (handler.CanReadToken(token))
-                {
-                    var jwtToken = handler.ReadJwtToken(token);
-                    logger.LogDebug("JWT Token Header: {Header}", jwtToken.Header);
-                    logger.LogDebug("JWT Token Payload: {Claims}",
-                        string.Join(", ", jwtToken.Claims.Select(c => $"{c.Type}: {c.Value}")));
-                    logger.LogDebug("JWT Token Valid From: {ValidFrom}, Valid To: {ValidTo}", jwtToken.ValidFrom,
-                        jwtToken.ValidTo);
-                }
-                else
-                {
-                    logger.LogWarning("Invalid JWT token format");
-                }
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Error parsing JWT token");
-            }
+            // Log the token for debugging
+            Console.WriteLine($"JWT Token received: {token}");
         }
-        else
-        {
-            logger.LogDebug("No Authorization header found");
-        }
-
-        await next(context);
+        
+        await _next(context);
     }
 }

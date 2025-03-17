@@ -1,10 +1,13 @@
 using System.Security.Claims;
-using UrlShortenerPro.Infrastructure.Models;
+using UrlShortenerPro.Core.Dtos;
 
 namespace UrlShortenerPro.Core.Interfaces;
 
 public interface IJwtService
 {
-    string GenerateToken(User user);
+    string GenerateToken(UserDto user);
     ClaimsPrincipal? GetPrincipalFromToken(string token);
+    int? GetUserIdFromToken(string token);
+    string? GetEmailFromToken(string token);
+    bool ValidateToken(string token);
 }

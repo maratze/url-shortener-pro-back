@@ -1,96 +1,198 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 using UrlShortenerPro.Api.DTOs;
+using UrlShortenerPro.Core.Dtos;
 using UrlShortenerPro.Core.Interfaces;
 using UrlShortenerPro.Core.Models;
 
 namespace UrlShortenerPro.Api.Controllers;
 
 [ApiController]
-[Route("api/urls")]
-public class UrlController(IUrlService urlService, IClientTrackingService clientTrackingService) : ControllerBase
+[Route("api/[controller]")]
+public class UrlController : ControllerBase
 {
-    // POST api/urls
-    [HttpPost]
-    public async Task<ActionResult<UrlResponse>> CreateShortUrl([FromBody] CreateUrlRequest request)
+    private readonly IUrlService _urlService;
+    private readonly ILogger<UrlController> _logger;
+    private readonly IClientTrackingService _clientTrackingService;
+
+    public UrlController(
+        IUrlService urlService,
+        ILogger<UrlController> logger,
+        IClientTrackingService clientTrackingService)
+    {
+        _urlService = urlService;
+        _logger = logger;
+        _clientTrackingService = clientTrackingService;
+    }
+
+    [HttpGet("{shortCode}")]
+    public async Task<IActionResult> GetByShortCode(string shortCode)
     {
         try
         {
-            int? userId = null;
-            if (User.Identity?.IsAuthenticated == true)
+            var url = await _urlService.GetByShortCodeAsync(shortCode);
+            if (url == null)
             {
-                userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier) ??
-                                   throw new InvalidOperationException());
+                return NotFound();
             }
 
-            var urlRequest = new UrlCreationRequest
-            {
-                OriginalUrl = request.OriginalUrl,
-                CustomCode = request.CustomCode,
-                ExpiresInDays = request.ExpiresInDays,
-                UserId = userId
-            };
-
-            var result = await urlService.CreateShortUrlAsync(urlRequest);
-            return Ok(result);
+            return Ok(url);
         }
-        catch (InvalidOperationException ex)
+        catch (Exception ex)
         {
-            return BadRequest(new { message = ex.Message });
-        }
-        catch (Exception)
-        {
-            return StatusCode(500, new { message = "Произошла ошибка при создании короткой ссылки" });
+            _logger.LogError(ex, "Error getting URL by short code: {ShortCode}", shortCode);
+            return StatusCode(500, "An error occurred while processing your request.");
         }
     }
 
-    // GET api/urls/{shortCode}
-    [HttpGet("{shortCode}")]
-    public async Task<ActionResult<UrlResponse>> GetUrl(string shortCode)
+    [HttpGet("redirect/{shortCode}")]
+    public async Task<IActionResult> RedirectToOriginal(string shortCode)
     {
-        var url = await urlService.GetUrlByShortCodeAsync(shortCode);
-        if (url == null)
+        try
         {
-            return NotFound();
-        }
+            // Get request information
+            string ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+            string userAgent = Request.Headers["User-Agent"].ToString();
+            string referer = Request.Headers["Referer"].ToString();
+            
+            var originalUrl = await _urlService.GetOriginalUrlAndTrackClickAsync(shortCode, ipAddress, userAgent, referer);
+            if (string.IsNullOrEmpty(originalUrl))
+            {
+                return NotFound();
+            }
 
-        // Проверка доступа - только владелец или публичный доступ
-        if (url.UserId.HasValue)
+            return Redirect(originalUrl);
+        }
+        catch (Exception ex)
         {
-            if (User.Identity?.IsAuthenticated == false ||
-                int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier) ?? throw new InvalidOperationException()) !=
-                url.UserId.Value)
+            _logger.LogError(ex, "Error redirecting to original URL for short code: {ShortCode}", shortCode);
+            return StatusCode(500, "An error occurred while processing your request.");
+        }
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> Create([FromBody] UrlDto urlDto)
+    {
+        try
+        {
+            // Get client IP address for tracking
+            string clientIp = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+            
+            // Check if anonymous user has remaining free requests
+            if (urlDto.UserId == null)
+            {
+                int remainingRequests = await _clientTrackingService.GetRemainingFreeRequestsAsync(clientIp);
+                if (remainingRequests <= 0)
+                {
+                    return StatusCode(429, "You have reached the maximum number of free requests for this month. Please sign up for an account to continue.");
+                }
+            }
+
+            var createdUrl = await _urlService.CreateAsync(urlDto);
+            return CreatedAtAction(nameof(GetByShortCode), new { shortCode = createdUrl.ShortCode }, createdUrl);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating shortened URL");
+            return StatusCode(500, "An error occurred while processing your request.");
+        }
+    }
+
+    [Authorize]
+    [HttpGet("user")]
+    public async Task<IActionResult> GetByUserId()
+    {
+        try
+        {
+            // Get user ID from claims
+            if (!int.TryParse(User.FindFirst("UserId")?.Value, out int userId))
+            {
+                return Unauthorized();
+            }
+
+            var urls = await _urlService.GetByUserIdAsync(userId);
+            return Ok(urls);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting URLs by user ID");
+            return StatusCode(500, "An error occurred while processing your request.");
+        }
+    }
+
+    [Authorize]
+    [HttpPut("{id}")]
+    public async Task<IActionResult> Update(int id, [FromBody] UrlDto urlDto)
+    {
+        try
+        {
+            // Get user ID from claims
+            if (!int.TryParse(User.FindFirst("UserId")?.Value, out int userId))
+            {
+                return Unauthorized();
+            }
+
+            // Ensure the URL belongs to the user
+            var existingUrl = await _urlService.GetByIdAsync(id);
+            if (existingUrl == null)
+            {
+                return NotFound();
+            }
+
+            if (existingUrl.UserId != userId)
             {
                 return Forbid();
             }
+
+            urlDto.Id = id;
+            urlDto.UserId = userId;
+            var updatedUrl = await _urlService.UpdateAsync(urlDto);
+            return Ok(updatedUrl);
         }
-
-        return Ok(url);
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating URL with ID: {UrlId}", id);
+            return StatusCode(500, "An error occurred while processing your request.");
+        }
     }
 
-    // GET api/urls
-    [HttpGet]
     [Authorize]
-    public async Task<ActionResult<IEnumerable<UrlResponse>>> GetMyUrls()
+    [HttpDelete("{id}")]
+    public async Task<IActionResult> Delete(int id)
     {
-        int userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier) ?? throw new InvalidOperationException());
-        var urls = await urlService.GetUrlsByUserIdAsync(userId);
-        return Ok(urls);
-    }
+        try
+        {
+            // Get user ID from claims
+            if (!int.TryParse(User.FindFirst("UserId")?.Value, out int userId))
+            {
+                return Unauthorized();
+            }
 
-    // DELETE api/urls/{shortCode}
-    [HttpDelete("{shortCode}")]
-    [Authorize]
-    public async Task<IActionResult> DeleteUrl(string shortCode)
-    {
-        int userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier) ?? throw new InvalidOperationException());
-        bool result = await urlService.DeleteUrlAsync(shortCode, userId);
+            // Ensure the URL belongs to the user
+            var existingUrl = await _urlService.GetByIdAsync(id);
+            if (existingUrl == null)
+            {
+                return NotFound();
+            }
 
-        if (!result)
-            return NotFound();
+            if (existingUrl.UserId != userId)
+            {
+                return Forbid();
+            }
 
-        return NoContent();
+            await _urlService.DeleteAsync(id);
+            return NoContent();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error deleting URL with ID: {UrlId}", id);
+            return StatusCode(500, "An error occurred while processing your request.");
+        }
     }
 
     [HttpGet("remaining-requests")]
@@ -107,7 +209,7 @@ public class UrlController(IUrlService urlService, IClientTrackingService client
             string clientId = clientIdValues.ToString();
 
             // Get remaining requests from service
-            int remainingRequests = await clientTrackingService.GetRemainingFreeRequestsAsync(clientId);
+            int remainingRequests = await _clientTrackingService.GetRemainingFreeRequestsAsync(clientId);
 
             return Ok(new { remainingRequests });
         }

@@ -1,98 +1,203 @@
-using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
+using System;
+using System.Security.Claims;
+using System.Threading.Tasks;
 using UrlShortenerPro.Core.Interfaces;
 
-namespace UrlShortenerPro.Api.Controllers;
-
-[ApiController]
-[Route("api/analytics")]
-[Authorize]
-public class AnalyticsController : ControllerBase
+namespace UrlShortenerPro.Api.Controllers
 {
-    private readonly IAnalyticsService _analyticsService;
-    private readonly IUrlService _urlService;
-
-    public AnalyticsController(
-        IAnalyticsService analyticsService,
-        IUrlService urlService)
+    [ApiController]
+    [Route("api/[controller]")]
+    [Authorize]
+    public class AnalyticsController : ControllerBase
     {
-        _analyticsService = analyticsService;
-        _urlService = urlService;
-    }
+        private readonly IAnalyticsService _analyticsService;
+        private readonly ILogger<AnalyticsController> _logger;
 
-    // GET api/analytics/{urlId}/clicks
-    [HttpGet("{urlId}/clicks")]
-    public async Task<IActionResult> GetClickStats(int urlId, [FromQuery] DateTime? startDate,
-        [FromQuery] DateTime? endDate)
-    {
-        int userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier) ?? throw new InvalidOperationException());
-        bool canAccess = await _analyticsService.UserCanAccessUrlAnalyticsAsync(urlId, userId);
+        public AnalyticsController(
+            IAnalyticsService analyticsService,
+            ILogger<AnalyticsController> logger)
+        {
+            _analyticsService = analyticsService;
+            _logger = logger;
+        }
 
-        if (!canAccess)
-            return Forbid();
+        [HttpGet("url/{urlId}")]
+        public async Task<IActionResult> GetUrlAnalytics(int urlId)
+        {
+            try
+            {
+                // Get user ID from claims
+                if (!int.TryParse(User.FindFirst("UserId")?.Value, out int userId))
+                {
+                    return Unauthorized();
+                }
 
-        var stats = await _analyticsService.GetClickStatsAsync(urlId, startDate, endDate);
-        return Ok(stats);
-    }
+                var analytics = await _analyticsService.GetUrlAnalyticsAsync(urlId, userId);
+                return Ok(analytics);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return Forbid();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting analytics for URL with ID: {UrlId}", urlId);
+                return StatusCode(500, "An error occurred while processing your request.");
+            }
+        }
 
-    // GET api/analytics/{urlId}/devices
-    [HttpGet("{urlId}/devices")]
-    public async Task<IActionResult> GetDeviceStats(int urlId, [FromQuery] DateTime? startDate,
-        [FromQuery] DateTime? endDate)
-    {
-        int userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier) ?? throw new InvalidOperationException());
-        bool canAccess = await _analyticsService.UserCanAccessUrlAnalyticsAsync(urlId, userId);
+        [HttpGet("user")]
+        public async Task<IActionResult> GetUserAnalytics()
+        {
+            try
+            {
+                // Get user ID from claims
+                if (!int.TryParse(User.FindFirst("UserId")?.Value, out int userId))
+                {
+                    return Unauthorized();
+                }
 
-        if (!canAccess)
-            return Forbid();
+                var analytics = await _analyticsService.GetUserAnalyticsAsync(userId);
+                return Ok(analytics);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting analytics for user");
+                return StatusCode(500, "An error occurred while processing your request.");
+            }
+        }
 
-        // Проверка премиум статуса для расширенной аналитики
-        bool isPremium = await _analyticsService.UserCanAccessPremiumAnalyticsAsync(userId);
-        if (!isPremium)
-            return StatusCode(403, new { message = "Эта функция доступна только для премиум пользователей" });
+        [HttpGet("url/{urlId}/clicks")]
+        public async Task<IActionResult> GetUrlClicks(int urlId, [FromQuery] DateTime? startDate, [FromQuery] DateTime? endDate)
+        {
+            try
+            {
+                // Get user ID from claims
+                if (!int.TryParse(User.FindFirst("UserId")?.Value, out int userId))
+                {
+                    return Unauthorized();
+                }
 
-        var stats = await _analyticsService.GetDeviceStatsAsync(urlId, startDate, endDate);
-        return Ok(stats);
-    }
+                var clicks = await _analyticsService.GetUrlClicksAsync(urlId, userId, startDate, endDate);
+                return Ok(clicks);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return Forbid();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting clicks for URL with ID: {UrlId}", urlId);
+                return StatusCode(500, "An error occurred while processing your request.");
+            }
+        }
 
-    // GET api/analytics/{urlId}/locations
-    [HttpGet("{urlId}/locations")]
-    public async Task<IActionResult> GetLocationStats(int urlId, [FromQuery] DateTime? startDate,
-        [FromQuery] DateTime? endDate)
-    {
-        int userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier) ?? throw new InvalidOperationException());
-        bool canAccess = await _analyticsService.UserCanAccessUrlAnalyticsAsync(urlId, userId);
+        [HttpGet("url/{urlId}/devices")]
+        public async Task<IActionResult> GetDeviceStats(int urlId, [FromQuery] DateTime? startDate, [FromQuery] DateTime? endDate)
+        {
+            try
+            {
+                // Get user ID from claims
+                if (!int.TryParse(User.FindFirst("UserId")?.Value, out int userId))
+                {
+                    return Unauthorized();
+                }
 
-        if (!canAccess)
-            return Forbid();
+                // Check if user can access URL analytics
+                bool canAccess = await _analyticsService.UserCanAccessUrlAnalyticsAsync(urlId, userId);
+                if (!canAccess)
+                {
+                    return Forbid();
+                }
 
-        // Проверка премиум статуса для расширенной аналитики
-        bool isPremium = await _analyticsService.UserCanAccessPremiumAnalyticsAsync(userId);
-        if (!isPremium)
-            return StatusCode(403, new { message = "Эта функция доступна только для премиум пользователей" });
+                // Check if user has premium access
+                bool isPremium = await _analyticsService.UserCanAccessPremiumAnalyticsAsync(userId);
+                if (!isPremium)
+                {
+                    return StatusCode(403, "This feature is only available for premium users.");
+                }
 
-        var stats = await _analyticsService.GetLocationStatsAsync(urlId, startDate, endDate);
-        return Ok(stats);
-    }
+                var stats = await _analyticsService.GetDeviceStatsAsync(urlId, startDate, endDate);
+                return Ok(stats);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting device stats for URL with ID: {UrlId}", urlId);
+                return StatusCode(500, "An error occurred while processing your request.");
+            }
+        }
 
-    // GET api/analytics/{urlId}/referrers
-    [HttpGet("{urlId}/referrers")]
-    public async Task<IActionResult> GetReferrerStats(int urlId, [FromQuery] DateTime? startDate,
-        [FromQuery] DateTime? endDate)
-    {
-        int userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier) ?? throw new InvalidOperationException());
-        bool canAccess = await _analyticsService.UserCanAccessUrlAnalyticsAsync(urlId, userId);
+        [HttpGet("url/{urlId}/locations")]
+        public async Task<IActionResult> GetLocationStats(int urlId, [FromQuery] DateTime? startDate, [FromQuery] DateTime? endDate)
+        {
+            try
+            {
+                // Get user ID from claims
+                if (!int.TryParse(User.FindFirst("UserId")?.Value, out int userId))
+                {
+                    return Unauthorized();
+                }
 
-        if (!canAccess)
-            return Forbid();
+                // Check if user can access URL analytics
+                bool canAccess = await _analyticsService.UserCanAccessUrlAnalyticsAsync(urlId, userId);
+                if (!canAccess)
+                {
+                    return Forbid();
+                }
 
-        // Проверка премиум статуса для расширенной аналитики
-        bool isPremium = await _analyticsService.UserCanAccessPremiumAnalyticsAsync(userId);
-        if (!isPremium)
-            return StatusCode(403, new { message = "Эта функция доступна только для премиум пользователей" });
+                // Check if user has premium access
+                bool isPremium = await _analyticsService.UserCanAccessPremiumAnalyticsAsync(userId);
+                if (!isPremium)
+                {
+                    return StatusCode(403, "This feature is only available for premium users.");
+                }
 
-        var stats = await _analyticsService.GetReferrerStatsAsync(urlId, startDate, endDate);
-        return Ok(stats);
+                var stats = await _analyticsService.GetLocationStatsAsync(urlId, startDate, endDate);
+                return Ok(stats);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting location stats for URL with ID: {UrlId}", urlId);
+                return StatusCode(500, "An error occurred while processing your request.");
+            }
+        }
+
+        [HttpGet("url/{urlId}/referrers")]
+        public async Task<IActionResult> GetReferrerStats(int urlId, [FromQuery] DateTime? startDate, [FromQuery] DateTime? endDate)
+        {
+            try
+            {
+                // Get user ID from claims
+                if (!int.TryParse(User.FindFirst("UserId")?.Value, out int userId))
+                {
+                    return Unauthorized();
+                }
+
+                // Check if user can access URL analytics
+                bool canAccess = await _analyticsService.UserCanAccessUrlAnalyticsAsync(urlId, userId);
+                if (!canAccess)
+                {
+                    return Forbid();
+                }
+
+                // Check if user has premium access
+                bool isPremium = await _analyticsService.UserCanAccessPremiumAnalyticsAsync(userId);
+                if (!isPremium)
+                {
+                    return StatusCode(403, "This feature is only available for premium users.");
+                }
+
+                var stats = await _analyticsService.GetReferrerStatsAsync(urlId, startDate, endDate);
+                return Ok(stats);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting referrer stats for URL with ID: {UrlId}", urlId);
+                return StatusCode(500, "An error occurred while processing your request.");
+            }
+        }
     }
 }
