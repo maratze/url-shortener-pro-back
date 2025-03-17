@@ -8,7 +8,7 @@ using UrlShortenerPro.Core.Models;
 namespace UrlShortenerPro.Api.Controllers
 {
     [ApiController]
-    [Route("api/[controller]")]
+    [Route("api/auth")]
     public class AuthController : ControllerBase
     {
         private readonly IUserService _userService;

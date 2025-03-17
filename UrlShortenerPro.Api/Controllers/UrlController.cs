@@ -13,7 +13,7 @@ using UrlShortenerPro.Core.Models;
 namespace UrlShortenerPro.Api.Controllers;
 
 [ApiController]
-[Route("api/[controller]")]
+[Route("api/url")]
 public class UrlController : ControllerBase
 {
     private readonly IUrlService _urlService;

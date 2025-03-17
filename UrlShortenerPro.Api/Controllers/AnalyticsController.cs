@@ -9,7 +9,7 @@ using UrlShortenerPro.Core.Interfaces;
 namespace UrlShortenerPro.Api.Controllers
 {
     [ApiController]
-    [Route("api/[controller]")]
+    [Route("api/analytics")]
     [Authorize]
     public class AnalyticsController : ControllerBase
     {
