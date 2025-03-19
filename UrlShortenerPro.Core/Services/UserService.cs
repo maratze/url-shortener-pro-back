@@ -158,17 +158,44 @@ public class UserService : IUserService
         }
     }
 
-    public async Task<UserResponse> UpdateProfileAsync(int userId, UpdateProfileRequest request)
+    public async Task<UserResponse?> UpdateProfileAsync(int userId, UpdateProfileRequest request)
     {
         try
         {
             var user = await _userRepository.GetByIdAsync(userId);
             if (user == null)
+            {
                 return null;
+            }
+
+            // Проверка и очистка входных данных
+            string? firstName = request.FirstName?.Trim();
+            string? lastName = request.LastName?.Trim();
+
+            // Ограничение длины полей
+            if (firstName?.Length > 50)
+            {
+                firstName = firstName.Substring(0, 50);
+            }
+
+            if (lastName?.Length > 50)
+            {
+                lastName = lastName.Substring(0, 50);
+            }
 
             // Update user data
-            user.FirstName = request.FirstName;
-            user.LastName = request.LastName;
+            user.FirstName = firstName;
+            user.LastName = lastName;
+
+            // Сохраняем изменения в базу данных
+            bool updated = await _userRepository.UpdateAsync(user);
+            if (!updated)
+            {
+                _logger.LogWarning("Failed to update profile for user {UserId}", userId);
+                throw new InvalidOperationException("Failed to update user profile");
+            }
+
+            _logger.LogInformation("Profile updated for user {UserId}", userId);
 
             return new UserResponse
             {
@@ -197,6 +224,16 @@ public class UserService : IUserService
                 return null;
 
             user.IsPremium = true;
+
+            // Сохраняем изменения в базу данных
+            bool updated = await _userRepository.UpdateAsync(user);
+            if (!updated)
+            {
+                _logger.LogWarning("Failed to upgrade user {UserId} to premium", userId);
+                throw new InvalidOperationException("Failed to upgrade to premium");
+            }
+
+            _logger.LogInformation("User {UserId} upgraded to premium", userId);
 
             // For status update, use basic info
             string deviceInfo = "Status update";
@@ -359,6 +396,15 @@ public class UserService : IUserService
             string newPasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
             user.PasswordHash = newPasswordHash;
             
+            // Сохраняем изменения в базу данных
+            bool updated = await _userRepository.UpdateAsync(user);
+            if (!updated)
+            {
+                _logger.LogWarning("Failed to update password for user {UserId}", userId);
+                return false;
+            }
+
+            _logger.LogInformation("Password changed for user {UserId}", userId);
             return true;
         }
         catch (InvalidOperationException)
