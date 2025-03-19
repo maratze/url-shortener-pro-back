@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using System;
+using System.Security.Claims;
 using System.Threading.Tasks;
 using UrlShortenerPro.Core.Dtos;
 using UrlShortenerPro.Core.Interfaces;
@@ -9,7 +10,7 @@ using UrlShortenerPro.Core.Interfaces;
 namespace UrlShortenerPro.Api.Controllers
 {
     [ApiController]
-    [Route("api/sessions")]
+    [Route("api/user-sessions")]
     [Authorize]
     public class UserSessionController : ControllerBase
     {

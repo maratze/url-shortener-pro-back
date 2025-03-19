@@ -319,7 +319,7 @@ public class UrlService : IUrlService
             var createdUrl = await _urlRepository.CreateAsync(urlDto);
 
             // Build the short URL
-            string baseUrl = _configuration["AppSettings:BaseUrl"] ?? "http://localhost:5000";
+            string baseUrl = _configuration["AppSettings:BaseUrl"]!;
             string shortUrl = $"{baseUrl}/{shortCode}";
 
             // Return the response
@@ -371,7 +371,7 @@ public class UrlService : IUrlService
             }
 
             // Build the short URL
-            string baseUrl = _configuration["AppSettings:BaseUrl"] ?? "http://localhost:5000";
+            string baseUrl = _configuration["AppSettings:BaseUrl"]!;
             string shortUrl = $"{baseUrl}/{shortCode}";
 
             return new UrlResponse
@@ -436,7 +436,7 @@ public class UrlService : IUrlService
         try
         {
             var urls = await _urlRepository.GetByUserIdAsync(userId, page, pageSize);
-            string baseUrl = _configuration["AppSettings:BaseUrl"] ?? "http://localhost:5000";
+            string baseUrl = _configuration["AppSettings:BaseUrl"]!;
 
             return urls.Select(url => new UrlResponse
             {

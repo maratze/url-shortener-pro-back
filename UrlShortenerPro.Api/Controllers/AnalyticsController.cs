@@ -30,8 +30,9 @@ namespace UrlShortenerPro.Api.Controllers
             try
             {
                 // Get user ID from claims
-                if (!int.TryParse(User.FindFirst("UserId")?.Value, out int userId))
+                if (!int.TryParse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out int userId))
                 {
+                    _logger.LogWarning("User ID claim not found or invalid in token");
                     return Unauthorized();
                 }
 
@@ -55,8 +56,9 @@ namespace UrlShortenerPro.Api.Controllers
             try
             {
                 // Get user ID from claims
-                if (!int.TryParse(User.FindFirst("UserId")?.Value, out int userId))
+                if (!int.TryParse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out int userId))
                 {
+                    _logger.LogWarning("User ID claim not found or invalid in token");
                     return Unauthorized();
                 }
 
@@ -65,7 +67,7 @@ namespace UrlShortenerPro.Api.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting analytics for user");
+                _logger.LogError(ex, "Error getting user analytics");
                 return StatusCode(500, "An error occurred while processing your request.");
             }
         }

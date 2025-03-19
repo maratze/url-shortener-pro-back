@@ -110,8 +110,9 @@ public class UrlController : ControllerBase
         try
         {
             // Get user ID from claims
-            if (!int.TryParse(User.FindFirst("UserId")?.Value, out int userId))
+            if (!int.TryParse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out int userId))
             {
+                _logger.LogWarning("User ID claim not found or invalid in token");
                 return Unauthorized();
             }
 
@@ -132,8 +133,9 @@ public class UrlController : ControllerBase
         try
         {
             // Get user ID from claims
-            if (!int.TryParse(User.FindFirst("UserId")?.Value, out int userId))
+            if (!int.TryParse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out int userId))
             {
+                _logger.LogWarning("User ID claim not found or invalid in token");
                 return Unauthorized();
             }
 
@@ -168,8 +170,9 @@ public class UrlController : ControllerBase
         try
         {
             // Get user ID from claims
-            if (!int.TryParse(User.FindFirst("UserId")?.Value, out int userId))
+            if (!int.TryParse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out int userId))
             {
+                _logger.LogWarning("User ID claim not found or invalid in token");
                 return Unauthorized();
             }
 

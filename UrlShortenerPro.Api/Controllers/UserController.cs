@@ -10,22 +10,12 @@ namespace UrlShortenerPro.Api.Controllers;
 
 [ApiController]
 [Route("api/users")]
-public class UserController : ControllerBase
+public class UserController(
+    IUserService userService,
+    IJwtService jwtService,
+    ILogger<UserController> logger)
+    : ControllerBase
 {
-    private readonly IUserService _userService;
-    private readonly IJwtService _jwtService;
-    private readonly ILogger<UserController> _logger;
-
-    public UserController(
-        IUserService userService,
-        IJwtService jwtService,
-        ILogger<UserController> logger)
-    {
-        _userService = userService;
-        _jwtService = jwtService;
-        _logger = logger;
-    }
-
     [HttpPost("register")]
     public async Task<IActionResult> Register(UserRegistrationRequest request)
     {
@@ -36,7 +26,7 @@ public class UserController : ControllerBase
                 return BadRequest(ModelState);
             }
 
-            var userResponse = await _userService.RegisterAsync(request);
+            var userResponse = await userService.RegisterAsync(request);
             return Ok(userResponse);
         }
         catch (InvalidOperationException ex)
@@ -45,7 +35,7 @@ public class UserController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error during user registration");
+            logger.LogError(ex, "Error during user registration");
             return StatusCode(500, "An error occurred during registration");
         }
     }
@@ -65,7 +55,7 @@ public class UserController : ControllerBase
             var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "Unknown";
             var location = "Unknown"; // Could add IP geolocation here
 
-            var userResponse = await _userService.LoginAsync(request, deviceInfo, ipAddress, location);
+            var userResponse = await userService.LoginAsync(request, deviceInfo, ipAddress, location);
             return Ok(userResponse);
         }
         catch (InvalidOperationException ex)
@@ -74,7 +64,7 @@ public class UserController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error during login");
+            logger.LogError(ex, "Error during login");
             return StatusCode(500, "An error occurred during login");
         }
     }
@@ -91,7 +81,7 @@ public class UserController : ControllerBase
                 return Unauthorized("Invalid token");
             }
 
-            var user = await _userService.GetByIdAsync(userId.Value);
+            var user = await userService.GetByIdAsync(userId.Value);
             if (user == null)
             {
                 return NotFound("User not found");
@@ -101,7 +91,7 @@ public class UserController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error retrieving user profile");
+            logger.LogError(ex, "Error retrieving user profile");
             return StatusCode(500, "An error occurred while retrieving the profile");
         }
     }
@@ -118,7 +108,7 @@ public class UserController : ControllerBase
                 return Unauthorized("Invalid token");
             }
 
-            var updatedUser = await _userService.UpdateProfileAsync(userId.Value, request);
+            var updatedUser = await userService.UpdateProfileAsync(userId.Value, request);
             if (updatedUser == null)
             {
                 return NotFound("User not found");
@@ -128,7 +118,7 @@ public class UserController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error updating user profile");
+            logger.LogError(ex, "Error updating user profile");
             return StatusCode(500, "An error occurred while updating the profile");
         }
     }
@@ -138,12 +128,12 @@ public class UserController : ControllerBase
     {
         try
         {
-            var isAvailable = await _userService.IsEmailAvailableAsync(email);
+            var isAvailable = await userService.IsEmailAvailableAsync(email);
             return Ok(new { IsAvailable = isAvailable });
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error checking email availability");
+            logger.LogError(ex, "Error checking email availability");
             return StatusCode(500, "An error occurred while checking email availability");
         }
     }
@@ -158,7 +148,7 @@ public class UserController : ControllerBase
             var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "Unknown";
             var location = "Unknown"; // Could add IP geolocation here
 
-            var userResponse = await _userService.AuthenticateWithOAuthAsync(request, deviceInfo, ipAddress, location);
+            var userResponse = await userService.AuthenticateWithOAuthAsync(request, deviceInfo, ipAddress, location);
             return Ok(userResponse);
         }
         catch (InvalidOperationException ex)
@@ -167,7 +157,7 @@ public class UserController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error during OAuth authentication");
+            logger.LogError(ex, "Error during OAuth authentication");
             return StatusCode(500, "An error occurred during authentication");
         }
     }
@@ -184,7 +174,7 @@ public class UserController : ControllerBase
                 return Unauthorized("Invalid token");
             }
 
-            var success = await _userService.ChangePasswordAsync(userId.Value, request);
+            var success = await userService.ChangePasswordAsync(userId.Value, request);
             if (!success)
             {
                 return BadRequest("Failed to change password");
@@ -198,7 +188,7 @@ public class UserController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error changing password");
+            logger.LogError(ex, "Error changing password");
             return StatusCode(500, "An error occurred while changing the password");
         }
     }
@@ -206,14 +196,28 @@ public class UserController : ControllerBase
     // Helper method to get the current user ID from the token
     private int? GetCurrentUserId()
     {
-        var authHeader = HttpContext.Request.Headers["Authorization"].FirstOrDefault();
-        if (string.IsNullOrEmpty(authHeader) || !authHeader.StartsWith("Bearer "))
+        string authorizationHeader = HttpContext.Request.Headers["Authorization"].ToString();
+        if (string.IsNullOrEmpty(authorizationHeader) || !authorizationHeader.StartsWith("Bearer "))
         {
+            logger.LogWarning("No valid authorization header found");
             return null;
         }
 
-        var token = authHeader.Substring("Bearer ".Length).Trim();
-        return _jwtService.GetUserIdFromToken(token);
+        try
+        {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier);
+            if (userIdClaim == null || !int.TryParse(userIdClaim.Value, out int userId))
+            {
+                logger.LogWarning("User ID claim not found or invalid in token");
+                return null;
+            }
+            return userId;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error getting user ID from token");
+            return null;
+        }
     }
 
     // POST api/users/upgrade
@@ -226,23 +230,23 @@ public class UserController : ControllerBase
             var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier);
             if (userIdClaim == null || !int.TryParse(userIdClaim.Value, out int userId))
             {
-                _logger.LogWarning("Не удалось получить ID пользователя из токена");
+                logger.LogWarning("Не удалось получить ID пользователя из токена");
                 return Unauthorized(new { message = "Недействительный токен" });
             }
 
-            var user = await _userService.UpgradeToPremiumAsync(userId);
+            var user = await userService.UpgradeToPremiumAsync(userId);
             if (user == null)
             {
-                _logger.LogWarning("Пользователь с ID {UserId} не найден при попытке апгрейда", userId);
+                logger.LogWarning("Пользователь с ID {UserId} не найден при попытке апгрейда", userId);
                 return NotFound(new { message = "Пользователь не найден" });
             }
 
-            _logger.LogInformation("Пользователь с ID {UserId} успешно перешел на премиум", userId);
+            logger.LogInformation("Пользователь с ID {UserId} успешно перешел на премиум", userId);
             return Ok(user);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Ошибка при апгрейде пользователя до премиум");
+            logger.LogError(ex, "Ошибка при апгрейде пользователя до премиум");
             return StatusCode(500, new { message = "Произошла ошибка при апгрейде до премиум" });
         }
     }
@@ -251,7 +255,9 @@ public class UserController : ControllerBase
     private static bool IsValidEmail(string email)
     {
         if (string.IsNullOrEmpty(email))
+        {
             return false;
+        }
 
         try
         {

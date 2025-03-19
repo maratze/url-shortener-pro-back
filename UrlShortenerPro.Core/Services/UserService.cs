@@ -49,22 +49,29 @@ public class UserService : IUserService
                 LastLoginAt = DateTime.UtcNow
             };
 
+            // Save user to database
+            var createdUser = await _userRepository.CreateAsync(user);
+            if (createdUser == null)
+            {
+                throw new InvalidOperationException("Failed to create user");
+            }
+
             // For registration, use basic device info
             string deviceInfo = "Registration";
             string ipAddress = "Unknown";
             string location = "Unknown";
 
             // Generate token with session info
-            string token = GenerateJwtToken(user, deviceInfo, ipAddress, location);
+            string token = GenerateJwtToken(createdUser, deviceInfo, ipAddress, location);
 
             return new UserResponse
             {
-                Id = user.Id,
-                Email = user.Email,
-                FirstName = user.FirstName,
-                LastName = user.LastName,
-                IsPremium = user.IsPremium,
-                CreatedAt = user.CreatedAt,
+                Id = createdUser.Id,
+                Email = createdUser.Email,
+                FirstName = createdUser.FirstName,
+                LastName = createdUser.LastName,
+                IsPremium = createdUser.IsPremium,
+                CreatedAt = createdUser.CreatedAt,
                 Token = token
             };
         }
