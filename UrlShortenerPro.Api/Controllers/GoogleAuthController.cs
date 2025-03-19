@@ -64,12 +64,19 @@ public class GoogleAuthController : ControllerBase
                 return BadRequest("Email is required from Google account");
             }
             
+            _logger.LogInformation("Получены данные пользователя от Google: Email: {Email}, Name: {Name}", 
+                userInfo.Email, userInfo.Name);
+
             // Аутентифицируем пользователя через OAuth
             var oauthRequest = new OAuthRequest
             {
                 Provider = "google",
                 Email = userInfo.Email,
-                Token = tokenResponse.Access_token
+                Token = tokenResponse.Access_token,
+                FirstName = userInfo.Given_name,
+                LastName = userInfo.Family_name,
+                Name = userInfo.Name,
+                Picture = userInfo.Picture
             };
             
             var deviceInfo = Request.Headers["User-Agent"].ToString();
@@ -78,11 +85,23 @@ public class GoogleAuthController : ControllerBase
             
             var userResponse = await _userService.AuthenticateWithOAuthAsync(oauthRequest, deviceInfo, ipAddress, location);
             
+            // Убедимся, что userResponse содержит необходимые данные
+            if (userResponse == null || string.IsNullOrEmpty(userResponse.Token) || string.IsNullOrEmpty(userResponse.Email))
+            {
+                _logger.LogError("Ошибка при создании ответа авторизации: Token или Email отсутствуют");
+                return Redirect($"{GetFrontendBaseUrl()}/login?error=Authentication+failed");
+            }
+            
             // Извлекаем returnUrl из state
             var returnUrl = state ?? "/dashboard";
             
             // Создаем URL для фронтенда со всеми необходимыми параметрами
-            var frontendCallbackUrl = $"{GetFrontendBaseUrl()}/auth/callback?token={userResponse.Token}&email={Uri.EscapeDataString(userResponse.Email)}&returnUrl={Uri.EscapeDataString(returnUrl)}";
+            var frontendCallbackUrl = $"{GetFrontendBaseUrl()}/auth/callback" +
+                $"?token={Uri.EscapeDataString(userResponse.Token)}" +
+                $"&email={Uri.EscapeDataString(userResponse.Email)}" +
+                $"&returnUrl={Uri.EscapeDataString(returnUrl)}";
+            
+            _logger.LogInformation("Перенаправление на URL: {CallbackUrl}", frontendCallbackUrl);
             
             return Redirect(frontendCallbackUrl);
         }

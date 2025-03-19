@@ -256,8 +256,9 @@ public class UserService : IUserService
                     // Generate a random password that the user won't use
                     // (since they'll be logging in via OAuth)
                     PasswordHash = BCrypt.Net.BCrypt.HashPassword(Guid.NewGuid().ToString()),
-                    // Если провайдер Google предоставил имя, используем его
-                    FirstName = request.Name,
+                    // Используем данные из Google
+                    FirstName = request.FirstName ?? request.Name,
+                    LastName = request.LastName,
                     IsPremium = false,
                     CreatedAt = DateTime.UtcNow,
                     LastLoginAt = DateTime.UtcNow
@@ -277,15 +278,34 @@ public class UserService : IUserService
                 // Update last login time
                 user.LastLoginAt = DateTime.UtcNow;
                 
+                // Обновляем данные пользователя, если они пришли из Google
+                bool userUpdated = false;
+                
                 // Если имя не было установлено ранее, но предоставлено Google
-                if (string.IsNullOrEmpty(user.FirstName) && !string.IsNullOrEmpty(request.Name))
+                if (string.IsNullOrEmpty(user.FirstName) && 
+                    (!string.IsNullOrEmpty(request.FirstName) || !string.IsNullOrEmpty(request.Name)))
                 {
-                    user.FirstName = request.Name;
-                    _logger.LogInformation("Updated user {Email} name from OAuth provider", user.Email);
+                    user.FirstName = request.FirstName ?? request.Name;
+                    userUpdated = true;
                 }
                 
-                // Сохраняем изменения
-                await _userRepository.UpdateAsync(user);
+                // Если фамилия не была установлена ранее, но предоставлена Google
+                if (string.IsNullOrEmpty(user.LastName) && !string.IsNullOrEmpty(request.LastName))
+                {
+                    user.LastName = request.LastName;
+                    userUpdated = true;
+                }
+                
+                // Сохраняем изменения, если были обновления
+                if (userUpdated)
+                {
+                    _logger.LogInformation("Updated user {Email} profile data from OAuth provider", user.Email);
+                    await _userRepository.UpdateAsync(user);
+                }
+                else
+                {
+                    await _userRepository.UpdateAsync(user);
+                }
             }
 
             // Generate token with session info
