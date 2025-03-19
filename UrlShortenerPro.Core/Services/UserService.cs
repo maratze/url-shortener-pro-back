@@ -245,9 +245,10 @@ public class UserService : IUserService
 
             // Check if user with this email exists
             var user = await _userRepository.GetByEmailAsync(request.Email);
+            bool isNewUser = user == null;
 
             // If user doesn't exist, register a new one
-            if (user == null)
+            if (isNewUser)
             {
                 user = new UserDto
                 {
@@ -255,15 +256,36 @@ public class UserService : IUserService
                     // Generate a random password that the user won't use
                     // (since they'll be logging in via OAuth)
                     PasswordHash = BCrypt.Net.BCrypt.HashPassword(Guid.NewGuid().ToString()),
+                    // Если провайдер Google предоставил имя, используем его
+                    FirstName = request.Name,
                     IsPremium = false,
                     CreatedAt = DateTime.UtcNow,
                     LastLoginAt = DateTime.UtcNow
                 };
+
+                // Создаем пользователя в базе данных
+                user = await _userRepository.CreateAsync(user);
+                if (user == null)
+                {
+                    throw new InvalidOperationException("Failed to create user from OAuth");
+                }
+
+                _logger.LogInformation("Created new user {Email} via {Provider} OAuth", user.Email, request.Provider);
             }
             else
             {
                 // Update last login time
                 user.LastLoginAt = DateTime.UtcNow;
+                
+                // Если имя не было установлено ранее, но предоставлено Google
+                if (string.IsNullOrEmpty(user.FirstName) && !string.IsNullOrEmpty(request.Name))
+                {
+                    user.FirstName = request.Name;
+                    _logger.LogInformation("Updated user {Email} name from OAuth provider", user.Email);
+                }
+                
+                // Сохраняем изменения
+                await _userRepository.UpdateAsync(user);
             }
 
             // Generate token with session info

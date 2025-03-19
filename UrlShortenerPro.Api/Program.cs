@@ -35,6 +35,10 @@ builder.Services.AddScoped<IJwtService, JwtService>();
 builder.Services.AddScoped<IUserSessionService, UserSessionService>();
 builder.Services.AddScoped<IClientTrackingService, UrlShortenerPro.Infrastructure.Services.ClientTrackingService>();
 
+// Добавляем HttpClient и GoogleAuthService
+builder.Services.AddHttpClient();
+builder.Services.AddScoped<IGoogleAuthService, GoogleAuthService>();
+
 // Configure JWT authentication
 builder.Services.AddAuthentication(options =>
 {
@@ -56,13 +60,13 @@ builder.Services.AddAuthentication(options =>
 });
 
 // Configure CORS
+var configuration = builder.Configuration;
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowSpecificOrigin",
-        builder => builder
+        corsPolicyBuilder => corsPolicyBuilder
             .WithOrigins(
-                "http://localhost:3000",  // Frontend URL
-                "https://localhost:3000"  // Frontend URL с HTTPS
+                configuration["WebAppBaseUrl"]!
             )
             .AllowAnyMethod()
             .AllowAnyHeader()
