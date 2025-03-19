@@ -44,6 +44,7 @@ public class UserService : IUserService
             {
                 Email = request.Email,
                 PasswordHash = passwordHash,
+                FirstName = request.FirstName,
                 IsPremium = false,
                 CreatedAt = DateTime.UtcNow,
                 LastLoginAt = DateTime.UtcNow
