@@ -33,4 +33,7 @@ public class User
     
     [MaxLength(50)]
     public string? Role { get; set; } = "User";
+    
+    [MaxLength(50)]
+    public string? AuthProvider { get; set; } = "Local";
 }

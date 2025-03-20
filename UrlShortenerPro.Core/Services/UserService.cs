@@ -15,6 +15,10 @@ public class UserService : IUserService
     private readonly IUserRepository _userRepository;
     private readonly IConfiguration _configuration;
     private readonly ILogger<UserService> _logger;
+    
+    // Константы для провайдеров аутентификации - всегда в нижнем регистре
+    private const string LOCAL_PROVIDER = "local";
+    private const string GOOGLE_PROVIDER = "google";
 
     public UserService(
         IUserRepository userRepository,
@@ -47,7 +51,8 @@ public class UserService : IUserService
                 FirstName = request.FirstName,
                 IsPremium = false,
                 CreatedAt = DateTime.UtcNow,
-                LastLoginAt = DateTime.UtcNow
+                LastLoginAt = DateTime.UtcNow,
+                AuthProvider = LOCAL_PROVIDER // Используем константу вместо строки "Local"
             };
 
             // Save user to database
@@ -73,6 +78,7 @@ public class UserService : IUserService
                 LastName = createdUser.LastName,
                 IsPremium = createdUser.IsPremium,
                 CreatedAt = createdUser.CreatedAt,
+                AuthProvider = createdUser.AuthProvider,
                 Token = token
             };
         }
@@ -118,6 +124,7 @@ public class UserService : IUserService
                 LastName = user.LastName,
                 IsPremium = user.IsPremium,
                 CreatedAt = user.CreatedAt,
+                AuthProvider = user.AuthProvider,
                 Token = token
             };
         }
@@ -148,6 +155,7 @@ public class UserService : IUserService
                 LastName = user.LastName,
                 IsPremium = user.IsPremium,
                 CreatedAt = user.CreatedAt,
+                AuthProvider = user.AuthProvider,
                 Token = null
             };
         }
@@ -205,6 +213,7 @@ public class UserService : IUserService
                 LastName = user.LastName,
                 IsPremium = user.IsPremium,
                 CreatedAt = user.CreatedAt,
+                AuthProvider = user.AuthProvider,
                 Token = null
             };
         }
@@ -248,6 +257,7 @@ public class UserService : IUserService
                 LastName = user.LastName,
                 IsPremium = user.IsPremium,
                 CreatedAt = user.CreatedAt,
+                AuthProvider = user.AuthProvider,
                 Token = GenerateJwtToken(user, deviceInfo, ipAddress, location)
             };
         }
@@ -279,6 +289,12 @@ public class UserService : IUserService
             {
                 throw new InvalidOperationException("Email not provided by OAuth provider");
             }
+            
+            // Приводим провайдер к нижнему регистру для единообразия
+            string provider = request.Provider?.ToLower() ?? GOOGLE_PROVIDER;
+
+            _logger.LogInformation("OAuth authentication request for {Email} via {Provider}", 
+                request.Email, provider);
 
             // Check if user with this email exists
             var user = await _userRepository.GetByEmailAsync(request.Email);
@@ -298,7 +314,8 @@ public class UserService : IUserService
                     LastName = request.LastName,
                     IsPremium = false,
                     CreatedAt = DateTime.UtcNow,
-                    LastLoginAt = DateTime.UtcNow
+                    LastLoginAt = DateTime.UtcNow,
+                    AuthProvider = provider // Используем переменную provider
                 };
 
                 // Создаем пользователя в базе данных
@@ -312,11 +329,21 @@ public class UserService : IUserService
             }
             else
             {
+                _logger.LogInformation("Existing user {Email} authenticated via {Provider}, current provider: {CurrentProvider}", 
+                    user.Email, provider, user.AuthProvider ?? "Not set");
                 // Update last login time
                 user.LastLoginAt = DateTime.UtcNow;
                 
                 // Обновляем данные пользователя, если они пришли из Google
                 bool userUpdated = false;
+                
+                // Устанавливаем провайдер, если пользователь авторизуется через Google
+                if (user.AuthProvider != provider)
+                {
+                    user.AuthProvider = provider;
+                    userUpdated = true;
+                    _logger.LogInformation("Updated AuthProvider to {Provider} for user {Email}", provider, user.Email);
+                }
                 
                 // Если имя не было установлено ранее, но предоставлено Google
                 if (string.IsNullOrEmpty(user.FirstName) && 
@@ -348,6 +375,9 @@ public class UserService : IUserService
             // Generate token with session info
             string token = GenerateJwtToken(user, deviceInfo, ipAddress, location);
 
+            _logger.LogInformation("User {Email} successfully authenticated via {Provider}", 
+                user.Email, request.Provider);
+
             return new UserResponse
             {
                 Id = user.Id,
@@ -356,6 +386,7 @@ public class UserService : IUserService
                 LastName = user.LastName,
                 IsPremium = user.IsPremium,
                 CreatedAt = user.CreatedAt,
+                AuthProvider = user.AuthProvider,
                 Token = token
             };
         }
@@ -374,38 +405,65 @@ public class UserService : IUserService
     {
         try
         {
-            if (string.IsNullOrEmpty(request.CurrentPassword) || string.IsNullOrEmpty(request.NewPassword))
-            {
-                throw new InvalidOperationException("Current and new passwords must be provided");
-            }
-
             var user = await _userRepository.GetByIdAsync(userId);
             if (user == null)
             {
                 throw new InvalidOperationException("User not found");
             }
 
-            // Verify current password
-            bool isCurrentPasswordValid = BCrypt.Net.BCrypt.Verify(request.CurrentPassword, user.PasswordHash);
-            if (!isCurrentPasswordValid)
-            {
-                throw new InvalidOperationException("Current password is incorrect");
-            }
-
-            // Hash new password
-            string newPasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
-            user.PasswordHash = newPasswordHash;
+            // Проверяем, действительно ли пользователь аутентифицирован через OAuth
+            bool isOAuthUser = !string.IsNullOrEmpty(user.AuthProvider) && user.AuthProvider != LOCAL_PROVIDER;
             
-            // Сохраняем изменения в базу данных
-            bool updated = await _userRepository.UpdateAsync(user);
-            if (!updated)
+            _logger.LogInformation("Password change request for user {UserId}, IsGoogleUser param: {IsGoogleUser}, " +
+                "AuthProvider in DB: {AuthProvider}, IsOAuthUser check: {IsOAuthUser}", 
+                userId, request.IsGoogleUser, user.AuthProvider ?? "Not set", isOAuthUser);
+            
+            // Проверка безопасности: isGoogleUser должен соответствовать фактическому провайдеру из БД
+            if (request.IsGoogleUser == true && !isOAuthUser)
             {
-                _logger.LogWarning("Failed to update password for user {UserId}", userId);
-                return false;
+                _logger.LogWarning("Attempt to change password without current password for non-OAuth user {UserId}", userId);
+                throw new InvalidOperationException("Current password is required for non-OAuth users");
             }
 
-            _logger.LogInformation("Password changed for user {UserId}", userId);
-            return true;
+            // Если это OAuth пользователь или указан текущий пароль
+            if (isOAuthUser || !string.IsNullOrEmpty(request.CurrentPassword))
+            {
+                // Если не OAuth и указан текущий пароль, проверяем его
+                if (!isOAuthUser && !string.IsNullOrEmpty(request.CurrentPassword))
+                {
+                    bool isCurrentPasswordValid = BCrypt.Net.BCrypt.Verify(request.CurrentPassword, user.PasswordHash);
+                    if (!isCurrentPasswordValid)
+                    {
+                        throw new InvalidOperationException("Current password is incorrect");
+                    }
+                }
+
+                // Hash new password
+                string newPasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
+                user.PasswordHash = newPasswordHash;
+                
+                // Если это был OAuth пользователь, изменяем провайдера на "Local"
+                if (isOAuthUser)
+                {
+                    user.AuthProvider = LOCAL_PROVIDER;
+                    _logger.LogInformation("User {UserId} converted from OAuth to local authentication", userId);
+                }
+                
+                // Сохраняем изменения в базу данных
+                bool updated = await _userRepository.UpdateAsync(user);
+                if (!updated)
+                {
+                    _logger.LogWarning("Failed to update password for user {UserId}", userId);
+                    return false;
+                }
+
+                _logger.LogInformation("Password changed for user {UserId}", userId);
+                return true;
+            }
+            else
+            {
+                throw new InvalidOperationException("Current password must be provided for non-OAuth users");
+            }
         }
         catch (InvalidOperationException)
         {

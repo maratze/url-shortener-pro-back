@@ -95,6 +95,7 @@ public class UserRepository : IUserRepository
             user.IsPremium = userDto.IsPremium;
             user.LastLoginAt = userDto.LastLoginAt;
             user.Role = userDto.Role;
+            user.AuthProvider = userDto.AuthProvider;
             
             await _dbContext.SaveChangesAsync();
             return true;
@@ -164,7 +165,8 @@ public class UserRepository : IUserRepository
             IsPremium = user.IsPremium,
             CreatedAt = user.CreatedAt,
             LastLoginAt = user.LastLoginAt,
-            Role = user.Role
+            Role = user.Role,
+            AuthProvider = user.AuthProvider
         };
     }
 
@@ -180,7 +182,8 @@ public class UserRepository : IUserRepository
             IsPremium = userDto.IsPremium,
             CreatedAt = userDto.CreatedAt,
             LastLoginAt = userDto.LastLoginAt,
-            Role = userDto.Role
+            Role = userDto.Role,
+            AuthProvider = userDto.AuthProvider
         };
     }
 }

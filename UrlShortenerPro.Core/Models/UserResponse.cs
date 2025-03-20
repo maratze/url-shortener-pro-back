@@ -9,4 +9,5 @@ public class UserResponse
     public bool IsPremium { get; set; }
     public System.DateTime CreatedAt { get; set; }
     public string? Token { get; set; }
+    public string? AuthProvider { get; set; }
 }
