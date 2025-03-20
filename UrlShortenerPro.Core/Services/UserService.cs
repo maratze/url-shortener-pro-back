@@ -418,6 +418,35 @@ public class UserService : IUserService
         }
     }
 
+    public async Task<bool> DeleteUserAsync(int userId)
+    {
+        try
+        {
+            var user = await _userRepository.GetByIdAsync(userId);
+            if (user == null)
+            {
+                _logger.LogWarning("Cannot delete user with ID {UserId} - user not found", userId);
+                return false;
+            }
+
+            // Удаляем пользователя из базы данных
+            bool deleted = await _userRepository.DeleteAsync(userId);
+            if (!deleted)
+            {
+                _logger.LogWarning("Failed to delete user {UserId} from database", userId);
+                return false;
+            }
+
+            _logger.LogInformation("User {UserId} ({Email}) has been successfully deleted", userId, user.Email);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error deleting user {UserId}", userId);
+            throw new InvalidOperationException("An error occurred while deleting the user account", ex);
+        }
+    }
+
     private string GenerateJwtToken(UserDto user, string deviceInfo, string ipAddress, string location)
     {
         var tokenHandler = new JwtSecurityTokenHandler();

@@ -12,4 +12,5 @@ public interface IUserService
     Task<UserResponse> UpgradeToPremiumAsync(int userId);
     Task<bool> IsEmailAvailableAsync(string email);
     Task<UserResponse> AuthenticateWithOAuthAsync(OAuthRequest request, string deviceInfo, string ipAddress, string location);
+    Task<bool> DeleteUserAsync(int userId);
 }

@@ -193,6 +193,38 @@ public class UserController(
         }
     }
 
+    [HttpDelete("account")]
+    [Authorize]
+    public async Task<IActionResult> DeleteAccount()
+    {
+        try
+        {
+            var userId = GetCurrentUserId();
+            if (userId == null)
+            {
+                return Unauthorized("Invalid token");
+            }
+
+            var success = await userService.DeleteUserAsync(userId.Value);
+            if (!success)
+            {
+                return BadRequest("Failed to delete account");
+            }
+
+            return Ok(new { Message = "Account deleted successfully" });
+        }
+        catch (InvalidOperationException ex)
+        {
+            logger.LogError(ex, "Error during account deletion for user ID {UserId}", GetCurrentUserId());
+            return BadRequest(ex.Message);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Unexpected error during account deletion for user ID {UserId}", GetCurrentUserId());
+            return StatusCode(500, "An error occurred while deleting the account");
+        }
+    }
+
     // Helper method to get the current user ID from the token
     private int? GetCurrentUserId()
     {
