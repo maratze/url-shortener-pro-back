@@ -42,4 +42,7 @@ public class UserResponse
     
     [JsonPropertyName("isTwoFactorEnabled")]
     public bool IsTwoFactorEnabled { get; set; }
+    
+    [JsonPropertyName("requiresTwoFactor")]
+    public bool RequiresTwoFactor { get; set; }
 }

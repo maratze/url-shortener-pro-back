@@ -111,6 +111,30 @@ public class UserService : IUserService
                 throw new InvalidOperationException("Invalid email or password");
             }
 
+            // Проверяем, включена ли 2FA и необходима ли проверка кода
+            if (user.IsTwoFactorEnabled)
+            {
+                // Если код не предоставлен при входе, возвращаем специальный ответ
+                if (string.IsNullOrEmpty(request.VerificationCode))
+                {
+                    return new UserResponse
+                    {
+                        Id = user.Id,
+                        Email = user.Email,
+                        FirstName = user.FirstName,
+                        LastName = user.LastName,
+                        RequiresTwoFactor = true
+                    };
+                }
+                
+                // Если код предоставлен, проверяем его
+                bool isCodeValid = ValidateVerificationCode(user.TwoFactorSecret, request.VerificationCode);
+                if (!isCodeValid)
+                {
+                    throw new InvalidOperationException("Invalid verification code");
+                }
+            }
+
             // Update last login time
             user.LastLoginAt = DateTime.UtcNow;
 
@@ -749,5 +773,76 @@ public class UserService : IUserService
 
         var token = tokenHandler.CreateToken(tokenDescriptor);
         return tokenHandler.WriteToken(token);
+    }
+
+    public async Task<UserResponse> ValidateTwoFactorAuthAsync(string email, string verificationCode, string deviceInfo, string ipAddress, string location, bool remember = false)
+    {
+        try
+        {
+            // Находим пользователя по email
+            var user = await _userRepository.GetByEmailAsync(email);
+            if (user == null)
+            {
+                _logger.LogWarning("Failed 2FA validation: user with email {Email} not found", email);
+                throw new InvalidOperationException("Invalid email");
+            }
+
+            // Проверяем, что у пользователя включена 2FA
+            if (!user.IsTwoFactorEnabled)
+            {
+                _logger.LogWarning("Failed 2FA validation: 2FA not enabled for user {UserId}", user.Id);
+                throw new InvalidOperationException("Two-factor authentication is not enabled for this account");
+            }
+
+            // Проверяем код верификации
+            if (string.IsNullOrEmpty(user.TwoFactorSecret))
+            {
+                _logger.LogWarning("Failed 2FA validation: no 2FA secret for user {UserId}", user.Id);
+                throw new InvalidOperationException("Two-factor authentication is not properly set up");
+            }
+
+            bool isCodeValid = ValidateVerificationCode(user.TwoFactorSecret, verificationCode);
+            if (!isCodeValid)
+            {
+                _logger.LogWarning("Failed 2FA validation: invalid code for user {UserId}", user.Id);
+                throw new InvalidOperationException("Invalid verification code");
+            }
+
+            // Обновляем время последнего входа
+            user.LastLoginAt = DateTime.UtcNow;
+            await _userRepository.UpdateAsync(user);
+
+            // Генерируем токен с информацией о сессии
+            string token = GenerateJwtToken(user, deviceInfo, ipAddress, location);
+
+            // Определяем, является ли пользователь OAuth пользователем
+            bool isOAuthUser = !string.IsNullOrEmpty(user.AuthProvider) && user.AuthProvider != LOCAL_PROVIDER;
+
+            _logger.LogInformation("Successful 2FA login for user {UserId}", user.Id);
+
+            // Возвращаем информацию о пользователе с токеном
+            return new UserResponse
+            {
+                Id = user.Id,
+                Email = user.Email,
+                FirstName = user.FirstName,
+                LastName = user.LastName,
+                IsPremium = user.IsPremium,
+                CreatedAt = user.CreatedAt,
+                AuthProvider = user.AuthProvider,
+                IsOAuthUser = isOAuthUser,
+                IsTwoFactorEnabled = true,
+                Token = token
+            };
+        }
+        catch (InvalidOperationException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during 2FA validation for {Email}", email);
+            throw new InvalidOperationException("An error occurred during two-factor authentication");
+        }
     }
 }

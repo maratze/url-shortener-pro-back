@@ -363,5 +363,46 @@ public class UserController(
             return StatusCode(500, new { message = "An error occurred while processing your request" });
         }
     }
+
+    // POST: api/users/validate-2fa
+    [HttpPost("validate-2fa")]
+    [ProducesResponseType(typeof(UserResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> ValidateTwoFactorAuth([FromBody] TwoFactorAuthLoginRequest request)
+    {
+        try
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            // Get device and location info for audit/session
+            var deviceInfo = Request.Headers.UserAgent.ToString();
+            var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "Unknown";
+            var location = "Unknown"; // Could add IP geolocation here
+
+            var userResponse = await userService.ValidateTwoFactorAuthAsync(
+                request.Email,
+                request.VerificationCode,
+                deviceInfo,
+                ipAddress,
+                location,
+                request.Remember);
+                
+            return Ok(userResponse);
+        }
+        catch (InvalidOperationException ex)
+        {
+            logger.LogWarning(ex, "Two-factor authentication validation failed: {Message}", ex.Message);
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error during two-factor authentication validation");
+            return StatusCode(500, new { message = "An error occurred during authentication" });
+        }
+    }
 }
 
