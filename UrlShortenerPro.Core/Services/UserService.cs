@@ -407,6 +407,22 @@ public class UserService : IUserService
                 }
             }
 
+            // Проверяем, включена ли 2FA
+            if (user.IsTwoFactorEnabled)
+            {
+                // Если 2FA включена, возвращаем специальный ответ для запроса кода верификации
+                _logger.LogInformation("Two-factor authentication required for OAuth user {Email}", user.Email);
+                
+                return new UserResponse
+                {
+                    Id = user.Id,
+                    Email = user.Email,
+                    FirstName = user.FirstName,
+                    LastName = user.LastName,
+                    RequiresTwoFactor = true
+                };
+            }
+
             // Generate token with session info
             string token = GenerateJwtToken(user, deviceInfo, ipAddress, location);
 
@@ -422,6 +438,8 @@ public class UserService : IUserService
                 IsPremium = user.IsPremium,
                 CreatedAt = user.CreatedAt,
                 AuthProvider = user.AuthProvider,
+                IsOAuthUser = true,
+                IsTwoFactorEnabled = user.IsTwoFactorEnabled,
                 Token = token
             };
         }

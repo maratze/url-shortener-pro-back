@@ -83,7 +83,26 @@ public class GoogleAuthController : ControllerBase
             var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "Unknown";
             var location = "Unknown"; // Можно реализовать геолокацию по IP
             
+            // Извлекаем returnUrl из state
+            var returnUrl = state ?? "/dashboard";
+            
             var userResponse = await _userService.AuthenticateWithOAuthAsync(oauthRequest, deviceInfo, ipAddress, location);
+            
+            // Проверяем, требуется ли 2FA
+            if (userResponse.RequiresTwoFactor)
+            {
+                _logger.LogInformation("Two-factor authentication required for Google user: {Email}", userResponse.Email);
+                
+                // Создаем URL для фронтенда с параметром requiresTwoFactor
+                var twoFactorCallbackUrl = $"{GetFrontendBaseUrl()}/auth/callback" +
+                    $"?email={Uri.EscapeDataString(userResponse.Email)}" +
+                    $"&requiresTwoFactor=true" +
+                    $"&returnUrl={Uri.EscapeDataString(returnUrl)}";
+                
+                _logger.LogInformation("Redirecting to 2FA screen: {CallbackUrl}", twoFactorCallbackUrl);
+                
+                return Redirect(twoFactorCallbackUrl);
+            }
             
             // Убедимся, что userResponse содержит необходимые данные
             if (userResponse == null || string.IsNullOrEmpty(userResponse.Token) || string.IsNullOrEmpty(userResponse.Email))
@@ -91,9 +110,6 @@ public class GoogleAuthController : ControllerBase
                 _logger.LogError("Ошибка при создании ответа авторизации: Token или Email отсутствуют");
                 return Redirect($"{GetFrontendBaseUrl()}/login?error=Authentication+failed");
             }
-            
-            // Извлекаем returnUrl из state
-            var returnUrl = state ?? "/dashboard";
             
             // Создаем URL для фронтенда со всеми необходимыми параметрами
             var frontendCallbackUrl = $"{GetFrontendBaseUrl()}/auth/callback" +
