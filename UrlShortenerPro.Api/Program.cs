@@ -21,16 +21,13 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IUrlRepository, UrlRepository>();
 builder.Services.AddScoped<IClickDataRepository, ClickDataRepository>();
-builder.Services.AddScoped<IUserSessionRepository, UserSessionRepository>();
 builder.Services.AddScoped<IClientUsageRepository, ClientUsageRepository>();
 
 // Register services
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IUrlService, UrlService>();
 builder.Services.AddScoped<IAnalyticsService, AnalyticsService>();
-builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddScoped<IJwtService, JwtService>();
-builder.Services.AddScoped<IUserSessionService, UserSessionService>();
 builder.Services.AddScoped<IClientTrackingService, UrlShortenerPro.Infrastructure.Services.ClientTrackingService>();
 
 // Добавляем HttpClient и GoogleAuthService
