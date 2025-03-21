@@ -175,6 +175,9 @@ namespace UrlShortenerPro.Infrastructure.Migrations
                     b.Property<bool>("IsPremium")
                         .HasColumnType("boolean");
 
+                    b.Property<bool>("IsTwoFactorEnabled")
+                        .HasColumnType("boolean");
+
                     b.Property<DateTime?>("LastLoginAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -189,6 +192,10 @@ namespace UrlShortenerPro.Infrastructure.Migrations
                     b.Property<string>("Role")
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)");
+
+                    b.Property<string>("TwoFactorSecret")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
 
                     b.HasKey("Id");
 

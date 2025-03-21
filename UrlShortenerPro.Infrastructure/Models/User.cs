@@ -36,4 +36,15 @@ public class User
     
     [MaxLength(50)]
     public string? AuthProvider { get; set; } = "Local";
+    
+    /// <summary>
+    /// Включена ли двухфакторная аутентификация
+    /// </summary>
+    public bool IsTwoFactorEnabled { get; set; } = false;
+    
+    /// <summary>
+    /// Секретный ключ для двухфакторной аутентификации
+    /// </summary>
+    [MaxLength(100)]
+    public string? TwoFactorSecret { get; set; }
 }

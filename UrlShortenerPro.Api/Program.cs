@@ -3,12 +3,10 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Text;
-using UrlShortenerPro.Api.Middleware;
 using UrlShortenerPro.Core.Interfaces;
 using UrlShortenerPro.Core.Services;
 using UrlShortenerPro.Infrastructure.Data;
 using UrlShortenerPro.Infrastructure.Repositories;
-using UrlShortenerPro.Infrastructure.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 

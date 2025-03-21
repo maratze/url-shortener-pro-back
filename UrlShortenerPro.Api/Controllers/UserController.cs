@@ -5,6 +5,7 @@ using UrlShortenerPro.Core.Interfaces;
 using UrlShortenerPro.Core.Models;
 using System.ComponentModel.DataAnnotations;
 using System.Text.RegularExpressions;
+using UrlShortenerPro.Api.Extensions;
 
 namespace UrlShortenerPro.Api.Controllers;
 
@@ -305,6 +306,61 @@ public class UserController(
         catch
         {
             return false;
+        }
+    }
+
+    // POST: api/users/two-factor-auth
+    [HttpPost("two-factor-auth")]
+    [Authorize]
+    [ProducesResponseType(typeof(TwoFactorAuthResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> ToggleTwoFactorAuth([FromBody] TwoFactorAuthRequest request)
+    {
+        try
+        {
+            // Получаем текущего пользователя
+            var userId = User.GetUserId();
+            if (userId <= 0)
+            {
+                logger.LogWarning("Invalid user token for 2FA toggle");
+                return Unauthorized("Invalid token");
+            }
+
+            TwoFactorAuthResponse response;
+
+            // Если включаем 2FA
+            if (request.Enable)
+            {
+                // Если код не предоставлен, настраиваем 2FA (первый шаг)
+                if (string.IsNullOrEmpty(request.Code))
+                {
+                    response = await userService.SetupTwoFactorAuthAsync(userId);
+                }
+                // Если код предоставлен, проверяем и включаем 2FA (второй шаг)
+                else
+                {
+                    response = await userService.VerifyAndEnableTwoFactorAuthAsync(userId, request.Code);
+                }
+            }
+            // Если отключаем 2FA
+            else
+            {
+                response = await userService.DisableTwoFactorAuthAsync(userId, request.Code);
+            }
+
+            return Ok(response);
+        }
+        catch (InvalidOperationException ex)
+        {
+            logger.LogWarning(ex, "Invalid 2FA operation: {Message}", ex.Message);
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error in 2FA toggle: {Message}", ex.Message);
+            return StatusCode(500, new { message = "An error occurred while processing your request" });
         }
     }
 }

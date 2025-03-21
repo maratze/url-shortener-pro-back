@@ -12,4 +12,6 @@ public class UserDto
     public DateTime? LastLoginAt { get; set; }
     public string? Role { get; set; }
     public string? AuthProvider { get; set; }
+    public bool IsTwoFactorEnabled { get; set; }
+    public string? TwoFactorSecret { get; set; }
 } 

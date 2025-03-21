@@ -4,6 +4,7 @@ using System.Text;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
+using OtpNet;
 using UrlShortenerPro.Core.Dtos;
 using UrlShortenerPro.Core.Interfaces;
 using UrlShortenerPro.Core.Models;
@@ -116,6 +117,9 @@ public class UserService : IUserService
             // Generate token with session info
             string token = GenerateJwtToken(user, deviceInfo, ipAddress, location);
 
+            // Определяем, является ли пользователь OAuth пользователем
+            bool isOAuthUser = !string.IsNullOrEmpty(user.AuthProvider) && user.AuthProvider != LOCAL_PROVIDER;
+
             return new UserResponse
             {
                 Id = user.Id,
@@ -125,6 +129,8 @@ public class UserService : IUserService
                 IsPremium = user.IsPremium,
                 CreatedAt = user.CreatedAt,
                 AuthProvider = user.AuthProvider,
+                IsOAuthUser = isOAuthUser,
+                IsTwoFactorEnabled = user.IsTwoFactorEnabled,
                 Token = token
             };
         }
@@ -147,6 +153,9 @@ public class UserService : IUserService
             if (user == null)
                 return null;
 
+            // Определяем, является ли пользователь OAuth пользователем
+            bool isOAuthUser = !string.IsNullOrEmpty(user.AuthProvider) && user.AuthProvider != LOCAL_PROVIDER;
+
             return new UserResponse
             {
                 Id = user.Id,
@@ -156,6 +165,8 @@ public class UserService : IUserService
                 IsPremium = user.IsPremium,
                 CreatedAt = user.CreatedAt,
                 AuthProvider = user.AuthProvider,
+                IsOAuthUser = isOAuthUser,
+                IsTwoFactorEnabled = user.IsTwoFactorEnabled,
                 Token = null
             };
         }
@@ -502,6 +513,214 @@ public class UserService : IUserService
         {
             _logger.LogError(ex, "Error deleting user {UserId}", userId);
             throw new InvalidOperationException("An error occurred while deleting the user account", ex);
+        }
+    }
+
+    public async Task<TwoFactorAuthResponse> SetupTwoFactorAuthAsync(int userId)
+    {
+        try
+        {
+            // Получаем пользователя по ID
+            var user = await _userRepository.GetByIdAsync(userId);
+            if (user == null)
+            {
+                _logger.LogWarning("User with ID {UserId} not found when setting up 2FA", userId);
+                throw new ArgumentNullException($"User with ID {userId} not found");
+            }
+
+            // Генерируем новый ключ для 2FA
+            var secretKey = KeyGeneration.GenerateRandomKey(20);
+            var base32Secret = Base32Encoding.ToString(secretKey);
+
+            // Сохраняем секретный ключ и устанавливаем 2FA как неактивированное
+            user.TwoFactorSecret = base32Secret;
+            user.IsTwoFactorEnabled = false;
+            await _userRepository.UpdateAsync(user);
+
+            // Создаем URI для QR-кода
+            var appName = "TinyLink";
+            var issuer = "TinyLink";
+            var provisioningUri = $"otpauth://totp/{Uri.EscapeDataString(appName)}:{Uri.EscapeDataString(user.Email)}?secret={base32Secret}&issuer={Uri.EscapeDataString(issuer)}&algorithm=SHA1&digits=6&period=30";
+
+            _logger.LogInformation("Two-factor authentication setup completed for user {UserId}", userId);
+
+            // Возвращаем информацию для настройки 2FA
+            return new TwoFactorAuthResponse
+            {
+                IsEnabled = false,
+                Message = "Two-factor authentication is set up. Scan the QR code with your authenticator app and enter the verification code to enable.",
+                QrCodeData = provisioningUri,
+                ManualEntryKey = base32Secret
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error setting up two-factor authentication for user {UserId}", userId);
+            throw;
+        }
+    }
+
+    public async Task<TwoFactorAuthResponse> VerifyAndEnableTwoFactorAuthAsync(int userId, string verificationCode)
+    {
+        try
+        {
+            var user = await _userRepository.GetByIdAsync(userId);
+            if (user == null)
+            {
+                _logger.LogWarning("User not found for 2FA verification: {UserId}", userId);
+                throw new InvalidOperationException("User not found");
+            }
+
+            if (string.IsNullOrEmpty(user.TwoFactorSecret))
+            {
+                _logger.LogWarning("No 2FA secret found for user: {UserId}", userId);
+                throw new InvalidOperationException("Two-factor authentication setup not initiated");
+            }
+
+            if (user.IsTwoFactorEnabled)
+            {
+                _logger.LogWarning("2FA already enabled for user: {UserId}", userId);
+                return new TwoFactorAuthResponse
+                {
+                    IsEnabled = true,
+                    Message = "Two-factor authentication is already enabled"
+                };
+            }
+
+            // Validate the verification code
+            bool isValid = ValidateVerificationCode(user.TwoFactorSecret, verificationCode);
+            if (!isValid)
+            {
+                _logger.LogWarning("Invalid verification code for user: {UserId}", userId);
+                throw new InvalidOperationException("Invalid verification code");
+            }
+
+            // Enable 2FA
+            user.IsTwoFactorEnabled = true;
+            await _userRepository.UpdateAsync(user);
+
+            _logger.LogInformation("2FA enabled for user: {UserId}", userId);
+
+            return new TwoFactorAuthResponse
+            {
+                IsEnabled = true,
+                Message = "Two-factor authentication has been enabled successfully"
+            };
+        }
+        catch (InvalidOperationException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during 2FA verification for user: {UserId}", userId);
+            throw new InvalidOperationException("An error occurred during two-factor authentication verification");
+        }
+    }
+
+    public async Task<TwoFactorAuthResponse> DisableTwoFactorAuthAsync(int userId, string? verificationCode = null)
+    {
+        try
+        {
+            var user = await _userRepository.GetByIdAsync(userId);
+            if (user == null)
+            {
+                _logger.LogWarning("User not found for 2FA disabling: {UserId}", userId);
+                throw new InvalidOperationException("User not found");
+            }
+
+            if (!user.IsTwoFactorEnabled)
+            {
+                _logger.LogWarning("2FA already disabled for user: {UserId}", userId);
+                return new TwoFactorAuthResponse
+                {
+                    IsEnabled = false,
+                    Message = "Two-factor authentication is already disabled"
+                };
+            }
+
+            // If 2FA is enabled, we need to validate the code before disabling
+            if (!string.IsNullOrEmpty(user.TwoFactorSecret) && !string.IsNullOrEmpty(verificationCode))
+            {
+                bool isValid = ValidateVerificationCode(user.TwoFactorSecret, verificationCode);
+                if (!isValid)
+                {
+                    _logger.LogWarning("Invalid verification code for 2FA disabling: {UserId}", userId);
+                    throw new InvalidOperationException("Invalid verification code");
+                }
+            }
+            else if (user.IsTwoFactorEnabled && string.IsNullOrEmpty(verificationCode))
+            {
+                _logger.LogWarning("Verification code required to disable 2FA: {UserId}", userId);
+                throw new InvalidOperationException("Verification code is required to disable two-factor authentication");
+            }
+
+            // Disable 2FA and clear the secret
+            user.IsTwoFactorEnabled = false;
+            user.TwoFactorSecret = null;
+            await _userRepository.UpdateAsync(user);
+
+            _logger.LogInformation("2FA disabled for user: {UserId}", userId);
+
+            return new TwoFactorAuthResponse
+            {
+                IsEnabled = false,
+                Message = "Two-factor authentication has been disabled successfully"
+            };
+        }
+        catch (InvalidOperationException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during 2FA disabling for user: {UserId}", userId);
+            throw new InvalidOperationException("An error occurred during two-factor authentication disabling");
+        }
+    }
+
+    public async Task<bool> ValidateTwoFactorCodeAsync(int userId, string verificationCode)
+    {
+        try
+        {
+            var user = await _userRepository.GetByIdAsync(userId);
+            if (user == null || !user.IsTwoFactorEnabled || string.IsNullOrEmpty(user.TwoFactorSecret))
+            {
+                return false;
+            }
+
+            return ValidateVerificationCode(user.TwoFactorSecret, verificationCode);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error validating 2FA code for user {UserId}", userId);
+            return false;
+        }
+    }
+
+    private bool ValidateVerificationCode(string secretKey, string verificationCode)
+    {
+        try
+        {
+            // Убираем возможные пробелы и знаки форматирования из кода
+            verificationCode = verificationCode.Replace(" ", "").Replace("-", "");
+            
+            // Проверка формата кода
+            if (!int.TryParse(verificationCode, out _) || verificationCode.Length != 6)
+            {
+                return false;
+            }
+
+            // Преобразуем Base32-encoded строку в ключ
+            var key = Base32Encoding.ToBytes(secretKey);
+            var totp = new Totp(key);
+
+            // Проверяем код с окном в ±1 период (обычно 30 секунд) для компенсации разницы во времени
+            return totp.VerifyTotp(verificationCode, out _, VerificationWindow.RfcSpecifiedNetworkDelay);
+        }
+        catch (Exception)
+        {
+            return false;
         }
     }
 
