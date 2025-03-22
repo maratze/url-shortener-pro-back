@@ -78,21 +78,44 @@ public class UserSessionRepository : IUserSessionRepository
     
     public async Task<bool> UpdateSessionActivityAsync(int userId, string token)
     {
-        var session = await _dbContext.UserSessions
-            .FirstOrDefaultAsync(s => s.UserId == userId && s.Token == token && s.IsActive);
-            
-        if (session == null)
+        try
+        {
+            var session = await _dbContext.UserSessions
+                .FirstOrDefaultAsync(s => s.UserId == userId && s.Token == token && s.IsActive);
+
+            if (session == null)
+                return false;
+
+            session.LastActivityAt = DateTime.UtcNow;
+            _dbContext.UserSessions.Update(session);
+            await _dbContext.SaveChangesAsync();
+            return true;
+        }
+        catch (Exception)
         {
             return false;
         }
-        
-        session.LastActivityAt = DateTime.UtcNow;
-        await _dbContext.SaveChangesAsync();
-        
-        return true;
     }
     
-    private static UserSessionDto MapToDto(UserSession session)
+    public async Task AddSessionAsync(Core.Models.UserSession session)
+    {
+        var infraSession = new Models.UserSession
+        {
+            UserId = session.UserId,
+            Token = session.Token,
+            DeviceInfo = session.DeviceInfo,
+            IpAddress = session.IpAddress,
+            Location = session.Location,
+            CreatedAt = session.CreatedAt,
+            LastActivityAt = session.LastActivityAt,
+            IsActive = session.IsActive
+        };
+        
+        await _dbContext.UserSessions.AddAsync(infraSession);
+        await _dbContext.SaveChangesAsync();
+    }
+    
+    private static UserSessionDto MapToDto(Models.UserSession session)
     {
         return new UserSessionDto
         {

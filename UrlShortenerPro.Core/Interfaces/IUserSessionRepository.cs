@@ -1,4 +1,5 @@
 using UrlShortenerPro.Core.Dtos;
+using UrlShortenerPro.Core.Models;
 
 namespace UrlShortenerPro.Core.Interfaces;
 
@@ -50,4 +51,11 @@ public interface IUserSessionRepository
     /// <param name="token">Session token</param>
     /// <returns>true, if the session was successfully updated, otherwise false</returns>
     Task<bool> UpdateSessionActivityAsync(int userId, string token);
+    
+    /// <summary>
+    /// Add a new user session
+    /// </summary>
+    /// <param name="session">User session object</param>
+    /// <returns>Task, representing an asynchronous operation</returns>
+    Task AddSessionAsync(UserSession session);
 } 

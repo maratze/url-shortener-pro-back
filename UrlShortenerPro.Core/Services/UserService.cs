@@ -16,6 +16,7 @@ public class UserService : IUserService
     private readonly IUserRepository _userRepository;
     private readonly IConfiguration _configuration;
     private readonly ILogger<UserService> _logger;
+    private readonly IUserSessionRepository _sessionRepository;
     
     // Константы для провайдеров аутентификации - всегда в нижнем регистре
     private const string LOCAL_PROVIDER = "local";
@@ -24,11 +25,13 @@ public class UserService : IUserService
     public UserService(
         IUserRepository userRepository,
         IConfiguration configuration,
-        ILogger<UserService> logger)
+        ILogger<UserService> logger,
+        IUserSessionRepository sessionRepository)
     {
         _userRepository = userRepository;
         _configuration = configuration;
         _logger = logger;
+        _sessionRepository = sessionRepository;
     }
 
     public async Task<UserResponse> RegisterAsync(UserRegistrationRequest request)
@@ -140,6 +143,9 @@ public class UserService : IUserService
 
             // Generate token with session info
             string token = GenerateJwtToken(user, deviceInfo, ipAddress, location);
+            
+            // Сохраняем сессию пользователя в базе данных
+            await SaveUserSession(user.Id, token, deviceInfo, ipAddress, location);
 
             // Определяем, является ли пользователь OAuth пользователем
             bool isOAuthUser = !string.IsNullOrEmpty(user.AuthProvider) && user.AuthProvider != LOCAL_PROVIDER;
@@ -155,7 +161,8 @@ public class UserService : IUserService
                 AuthProvider = user.AuthProvider,
                 IsOAuthUser = isOAuthUser,
                 IsTwoFactorEnabled = user.IsTwoFactorEnabled,
-                Token = token
+                Token = token,
+                LastLoginAt = user.LastLoginAt
             };
         }
         catch (InvalidOperationException)
@@ -832,6 +839,9 @@ public class UserService : IUserService
 
             // Генерируем токен с информацией о сессии
             string token = GenerateJwtToken(user, deviceInfo, ipAddress, location);
+            
+            // Сохраняем сессию пользователя
+            await SaveUserSession(user.Id, token, deviceInfo, ipAddress, location);
 
             // Определяем, является ли пользователь OAuth пользователем
             bool isOAuthUser = !string.IsNullOrEmpty(user.AuthProvider) && user.AuthProvider != LOCAL_PROVIDER;
@@ -850,7 +860,8 @@ public class UserService : IUserService
                 AuthProvider = user.AuthProvider,
                 IsOAuthUser = isOAuthUser,
                 IsTwoFactorEnabled = true,
-                Token = token
+                Token = token,
+                LastLoginAt = user.LastLoginAt
             };
         }
         catch (InvalidOperationException)
@@ -861,6 +872,33 @@ public class UserService : IUserService
         {
             _logger.LogError(ex, "Error during 2FA validation for {Email}", email);
             throw new InvalidOperationException("An error occurred during two-factor authentication");
+        }
+    }
+
+    private async Task SaveUserSession(int userId, string token, string deviceInfo, string ipAddress, string location)
+    {
+        try
+        {
+            var userSession = new UserSession
+            {
+                UserId = userId,
+                Token = token,
+                DeviceInfo = deviceInfo,
+                IpAddress = ipAddress,
+                Location = location,
+                CreatedAt = DateTime.UtcNow,
+                LastActivityAt = DateTime.UtcNow,
+                IsActive = true
+            };
+            
+            await _sessionRepository.AddSessionAsync(userSession);
+            
+            _logger.LogInformation("Created new session for user {UserId}", userId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error saving user session for user {UserId}", userId);
+            // Не выбрасываем исключение, чтобы не прерывать процесс входа
         }
     }
 }

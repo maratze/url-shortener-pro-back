@@ -1,4 +1,3 @@
-using UrlShortenerPro.Core.Dtos;
 using UrlShortenerPro.Core.Models;
 
 namespace UrlShortenerPro.Core.Interfaces;
