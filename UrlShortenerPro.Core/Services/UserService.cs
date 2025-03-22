@@ -432,6 +432,9 @@ public class UserService : IUserService
 
             // Generate token with session info
             string token = GenerateJwtToken(user, deviceInfo, ipAddress, location);
+            
+            // Сохраняем сессию пользователя в базе данных
+            await SaveUserSession(user.Id, token, deviceInfo, ipAddress, location);
 
             _logger.LogInformation("User {Email} successfully authenticated via {Provider}", 
                 user.Email, request.Provider);
