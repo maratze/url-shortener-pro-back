@@ -3,15 +3,22 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Text;
+using UrlShortenerPro.Api.Services;
 using UrlShortenerPro.Core.Interfaces;
 using UrlShortenerPro.Core.Services;
 using UrlShortenerPro.Infrastructure.Data;
 using UrlShortenerPro.Infrastructure.Repositories;
+using Serilog;
+using System.Reflection;
+using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddControllers();
+
+// Добавляем доступ к HttpContext
+builder.Services.AddHttpContextAccessor();
 
 // Configure DbContext for PostgreSQL
 builder.Services.AddDbContext<AppDbContext>(options =>
@@ -22,6 +29,7 @@ builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IUrlRepository, UrlRepository>();
 builder.Services.AddScoped<IClickDataRepository, ClickDataRepository>();
 builder.Services.AddScoped<IClientUsageRepository, ClientUsageRepository>();
+builder.Services.AddScoped<IUserSessionRepository, UserSessionRepository>();
 
 // Register services
 builder.Services.AddScoped<IUserService, UserService>();
@@ -29,6 +37,10 @@ builder.Services.AddScoped<IUrlService, UrlService>();
 builder.Services.AddScoped<IAnalyticsService, AnalyticsService>();
 builder.Services.AddScoped<IJwtService, JwtService>();
 builder.Services.AddScoped<IClientTrackingService, UrlShortenerPro.Infrastructure.Services.ClientTrackingService>();
+
+// Сервисы для работы с сессиями пользователя
+builder.Services.AddScoped<ICurrentUserProvider, CurrentUserProvider>();
+builder.Services.AddScoped<IUserSessionService, UserSessionService>();
 
 // Добавляем HttpClient и GoogleAuthService
 builder.Services.AddHttpClient();
