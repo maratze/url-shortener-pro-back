@@ -505,12 +505,9 @@ public class UserService : IUserService
                 string newPasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
                 user.PasswordHash = newPasswordHash;
                 
-                // Если это был OAuth пользователь, изменяем провайдера на "Local"
-                if (isOAuthUser)
-                {
-                    user.AuthProvider = LOCAL_PROVIDER;
-                    _logger.LogInformation("User {UserId} converted from OAuth to local authentication", userId);
-                }
+                // Убираем изменение провайдера, чтобы сохранить тип аккаунта Google
+                // (НЕ меняем провайдер авторизации даже для OAuth пользователей)
+                _logger.LogInformation("Password set for user {UserId} with auth provider {Provider}", userId, user.AuthProvider);
                 
                 // Сохраняем изменения в базу данных
                 bool updated = await _userRepository.UpdateAsync(user);
