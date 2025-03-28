@@ -495,8 +495,8 @@ public class UserService : IUserService
             bool isOAuthUser = !string.IsNullOrEmpty(user.AuthProvider) && user.AuthProvider != LOCAL_PROVIDER;
             
             _logger.LogInformation("Password change request for user {UserId}, IsGoogleUser param: {IsGoogleUser}, " +
-                "AuthProvider in DB: {AuthProvider}, IsOAuthUser check: {IsOAuthUser}", 
-                userId, request.IsGoogleUser, user.AuthProvider ?? "Not set", isOAuthUser);
+                "AuthProvider in DB: {AuthProvider}, IsOAuthUser check: {IsOAuthUser}, HasPasswordSet: {HasPasswordSet}", 
+                userId, request.IsGoogleUser, user.AuthProvider ?? "Not set", isOAuthUser, user.HasPasswordSet);
             
             // Проверка безопасности: isGoogleUser должен соответствовать фактическому провайдеру из БД
             if (request.IsGoogleUser == true && !isOAuthUser)
@@ -505,40 +505,46 @@ public class UserService : IUserService
                 throw new InvalidOperationException("Current password is required for non-OAuth users");
             }
 
-            // Если это OAuth пользователь или указан текущий пароль
-            if (isOAuthUser || !string.IsNullOrEmpty(request.CurrentPassword))
+            // Проверяем, нужно ли проверять текущий пароль
+            bool shouldCheckCurrentPassword = !isOAuthUser || (isOAuthUser && user.HasPasswordSet);
+            
+            // Если нужно проверить текущий пароль, но он не предоставлен
+            if (shouldCheckCurrentPassword && string.IsNullOrEmpty(request.CurrentPassword))
             {
-                // Если не OAuth и указан текущий пароль, проверяем его
-                if (!isOAuthUser && !string.IsNullOrEmpty(request.CurrentPassword))
+                throw new InvalidOperationException("Current password is required");
+            }
+            
+            // Проверяем текущий пароль, если это требуется
+            if (shouldCheckCurrentPassword)
+            {
+                bool isCurrentPasswordValid = BCrypt.Net.BCrypt.Verify(request.CurrentPassword, user.PasswordHash);
+                if (!isCurrentPasswordValid)
                 {
-                    var isCurrentPasswordValid = BCrypt.Net.BCrypt.Verify(request.CurrentPassword, user.PasswordHash);
-                    if (!isCurrentPasswordValid)
-                    {
-                        throw new InvalidOperationException("Current password is incorrect");
-                    }
+                    throw new InvalidOperationException("Current password is incorrect");
                 }
-
-                // Hash new password
-                var newPasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
-                user.PasswordHash = newPasswordHash;
-                
-                // Устанавливаем флаг, что пароль установлен
-                user.HasPasswordSet = true;
-                
-                _logger.LogInformation("Password set for user {UserId} with auth provider {Provider}", userId, user.AuthProvider);
-                
-                var updated = await _userRepository.UpdateAsync(user);
-                if (!updated)
-                {
-                    _logger.LogWarning("Failed to update password for user {UserId}", userId);
-                    return false;
-                }
-
-                _logger.LogInformation("Password changed for user {UserId}", userId);
-                return true;
             }
 
-            throw new InvalidOperationException("Current password must be provided for non-OAuth users");
+            // Hash new password
+            string newPasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
+            user.PasswordHash = newPasswordHash;
+            
+            // Устанавливаем флаг, что пароль установлен
+            user.HasPasswordSet = true;
+            
+            // Убираем изменение провайдера, чтобы сохранить тип аккаунта Google
+            // (НЕ меняем провайдер авторизации даже для OAuth пользователей)
+            _logger.LogInformation("Password set for user {UserId} with auth provider {Provider}", userId, user.AuthProvider);
+            
+            // Сохраняем изменения в базу данных
+            bool updated = await _userRepository.UpdateAsync(user);
+            if (!updated)
+            {
+                _logger.LogWarning("Failed to update password for user {UserId}", userId);
+                return false;
+            }
+
+            _logger.LogInformation("Password changed for user {UserId}", userId);
+            return true;
         }
         catch (InvalidOperationException)
         {
