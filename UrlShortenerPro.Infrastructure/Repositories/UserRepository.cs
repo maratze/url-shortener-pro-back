@@ -98,6 +98,7 @@ public class UserRepository : IUserRepository
             user.AuthProvider = userDto.AuthProvider;
             user.IsTwoFactorEnabled = userDto.IsTwoFactorEnabled;
             user.TwoFactorSecret = userDto.TwoFactorSecret;
+            user.HasPasswordSet = userDto.HasPasswordSet;
             
             await _dbContext.SaveChangesAsync();
             return true;
@@ -170,26 +171,28 @@ public class UserRepository : IUserRepository
             Role = user.Role,
             AuthProvider = user.AuthProvider,
             IsTwoFactorEnabled = user.IsTwoFactorEnabled,
-            TwoFactorSecret = user.TwoFactorSecret
+            TwoFactorSecret = user.TwoFactorSecret,
+            HasPasswordSet = user.HasPasswordSet
         };
     }
 
-    private User MapToEntity(UserDto userDto)
+    private User MapToEntity(UserDto userDto, User? existingUser = null)
     {
-        return new User
-        {
-            Id = userDto.Id,
-            Email = userDto.Email,
-            PasswordHash = userDto.PasswordHash,
-            FirstName = userDto.FirstName,
-            LastName = userDto.LastName,
-            IsPremium = userDto.IsPremium,
-            CreatedAt = userDto.CreatedAt,
-            LastLoginAt = userDto.LastLoginAt,
-            Role = userDto.Role,
-            AuthProvider = userDto.AuthProvider,
-            IsTwoFactorEnabled = userDto.IsTwoFactorEnabled,
-            TwoFactorSecret = userDto.TwoFactorSecret
-        };
+        var user = existingUser ?? new User();
+        
+        user.Email = userDto.Email;
+        user.PasswordHash = userDto.PasswordHash;
+        user.FirstName = userDto.FirstName;
+        user.LastName = userDto.LastName;
+        user.IsPremium = userDto.IsPremium;
+        user.CreatedAt = userDto.CreatedAt;
+        user.LastLoginAt = userDto.LastLoginAt;
+        user.Role = userDto.Role;
+        user.AuthProvider = userDto.AuthProvider;
+        user.IsTwoFactorEnabled = userDto.IsTwoFactorEnabled;
+        user.TwoFactorSecret = userDto.TwoFactorSecret;
+        user.HasPasswordSet = userDto.HasPasswordSet;
+        
+        return user;
     }
 }

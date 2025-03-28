@@ -47,4 +47,10 @@ public class User
     /// </summary>
     [MaxLength(100)]
     public string? TwoFactorSecret { get; set; }
+    
+    /// <summary>
+    /// Флаг, указывающий, установлен ли пароль пользователем
+    /// Для обычной регистрации всегда true, для OAuth пользователей - true только после установки пароля
+    /// </summary>
+    public bool HasPasswordSet { get; set; } = false;
 }

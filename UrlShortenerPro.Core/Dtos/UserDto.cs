@@ -14,4 +14,5 @@ public class UserDto
     public string? AuthProvider { get; set; }
     public bool IsTwoFactorEnabled { get; set; }
     public string? TwoFactorSecret { get; set; }
+    public bool HasPasswordSet { get; set; }
 } 

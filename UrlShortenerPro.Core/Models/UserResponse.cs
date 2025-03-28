@@ -45,4 +45,7 @@ public class UserResponse
     
     [JsonPropertyName("requiresTwoFactor")]
     public bool RequiresTwoFactor { get; set; }
+    
+    [JsonPropertyName("hasPasswordSet")]
+    public bool HasPasswordSet { get; set; }
 }

@@ -172,6 +172,9 @@ namespace UrlShortenerPro.Infrastructure.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
+                    b.Property<bool>("HasPasswordSet")
+                        .HasColumnType("boolean");
+
                     b.Property<bool>("IsPremium")
                         .HasColumnType("boolean");
 

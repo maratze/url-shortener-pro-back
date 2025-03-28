@@ -56,7 +56,8 @@ public class UserService : IUserService
                 IsPremium = false,
                 CreatedAt = DateTime.UtcNow,
                 LastLoginAt = DateTime.UtcNow,
-                AuthProvider = LOCAL_PROVIDER // Используем константу вместо строки "Local"
+                AuthProvider = LOCAL_PROVIDER, // Используем константу вместо строки "Local"
+                HasPasswordSet = true // При обычной регистрации пароль всегда установлен
             };
 
             // Save user to database
@@ -83,6 +84,7 @@ public class UserService : IUserService
                 IsPremium = createdUser.IsPremium,
                 CreatedAt = createdUser.CreatedAt,
                 AuthProvider = createdUser.AuthProvider,
+                HasPasswordSet = createdUser.HasPasswordSet,
                 Token = token
             };
         }
@@ -101,6 +103,11 @@ public class UserService : IUserService
     {
         try
         {
+            if (string.IsNullOrEmpty(request.Email))
+            {
+                throw new InvalidOperationException("Email is required");
+            }
+            
             var user = await _userRepository.GetByEmailAsync(request.Email);
             if (user == null)
             {
@@ -161,6 +168,7 @@ public class UserService : IUserService
                 AuthProvider = user.AuthProvider,
                 IsOAuthUser = isOAuthUser,
                 IsTwoFactorEnabled = user.IsTwoFactorEnabled,
+                HasPasswordSet = user.HasPasswordSet,
                 Token = token,
                 LastLoginAt = user.LastLoginAt
             };
@@ -198,6 +206,7 @@ public class UserService : IUserService
                 AuthProvider = user.AuthProvider,
                 IsOAuthUser = isOAuthUser,
                 IsTwoFactorEnabled = user.IsTwoFactorEnabled,
+                HasPasswordSet = user.HasPasswordSet,
                 Token = null
             };
         }
@@ -256,6 +265,7 @@ public class UserService : IUserService
                 IsPremium = user.IsPremium,
                 CreatedAt = user.CreatedAt,
                 AuthProvider = user.AuthProvider,
+                HasPasswordSet = user.HasPasswordSet,
                 Token = null
             };
         }
@@ -300,6 +310,7 @@ public class UserService : IUserService
                 IsPremium = user.IsPremium,
                 CreatedAt = user.CreatedAt,
                 AuthProvider = user.AuthProvider,
+                HasPasswordSet = user.HasPasswordSet,
                 Token = GenerateJwtToken(user, deviceInfo, ipAddress, location)
             };
         }
@@ -357,7 +368,8 @@ public class UserService : IUserService
                     IsPremium = false,
                     CreatedAt = DateTime.UtcNow,
                     LastLoginAt = DateTime.UtcNow,
-                    AuthProvider = provider // Используем переменную provider
+                    AuthProvider = provider, // Используем переменную provider
+                    HasPasswordSet = false // OAuth пользователь изначально не имеет установленного пароля
                 };
 
                 // Создаем пользователя в базе данных
@@ -439,6 +451,9 @@ public class UserService : IUserService
             _logger.LogInformation("User {Email} successfully authenticated via {Provider}", 
                 user.Email, request.Provider);
 
+            // Определяем, является ли пользователь OAuth пользователем
+            bool isOAuthUser = !string.IsNullOrEmpty(user.AuthProvider) && user.AuthProvider != LOCAL_PROVIDER;
+
             return new UserResponse
             {
                 Id = user.Id,
@@ -448,9 +463,11 @@ public class UserService : IUserService
                 IsPremium = user.IsPremium,
                 CreatedAt = user.CreatedAt,
                 AuthProvider = user.AuthProvider,
-                IsOAuthUser = true,
+                IsOAuthUser = isOAuthUser,
                 IsTwoFactorEnabled = user.IsTwoFactorEnabled,
-                Token = token
+                HasPasswordSet = user.HasPasswordSet,
+                Token = token,
+                LastLoginAt = user.LastLoginAt
             };
         }
         catch (InvalidOperationException)
@@ -459,8 +476,8 @@ public class UserService : IUserService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error during OAuth authentication for {Email}", request.Email);
-            throw new InvalidOperationException("An error occurred during OAuth authentication");
+            _logger.LogError(ex, "Error during OAuth authentication: {Message}", ex.Message);
+            throw new InvalidOperationException("An error occurred during authentication");
         }
     }
 
@@ -494,7 +511,7 @@ public class UserService : IUserService
                 // Если не OAuth и указан текущий пароль, проверяем его
                 if (!isOAuthUser && !string.IsNullOrEmpty(request.CurrentPassword))
                 {
-                    bool isCurrentPasswordValid = BCrypt.Net.BCrypt.Verify(request.CurrentPassword, user.PasswordHash);
+                    var isCurrentPasswordValid = BCrypt.Net.BCrypt.Verify(request.CurrentPassword, user.PasswordHash);
                     if (!isCurrentPasswordValid)
                     {
                         throw new InvalidOperationException("Current password is incorrect");
@@ -502,15 +519,15 @@ public class UserService : IUserService
                 }
 
                 // Hash new password
-                string newPasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
+                var newPasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
                 user.PasswordHash = newPasswordHash;
                 
-                // Убираем изменение провайдера, чтобы сохранить тип аккаунта Google
-                // (НЕ меняем провайдер авторизации даже для OAuth пользователей)
+                // Устанавливаем флаг, что пароль установлен
+                user.HasPasswordSet = true;
+                
                 _logger.LogInformation("Password set for user {UserId} with auth provider {Provider}", userId, user.AuthProvider);
                 
-                // Сохраняем изменения в базу данных
-                bool updated = await _userRepository.UpdateAsync(user);
+                var updated = await _userRepository.UpdateAsync(user);
                 if (!updated)
                 {
                     _logger.LogWarning("Failed to update password for user {UserId}", userId);
@@ -520,10 +537,8 @@ public class UserService : IUserService
                 _logger.LogInformation("Password changed for user {UserId}", userId);
                 return true;
             }
-            else
-            {
-                throw new InvalidOperationException("Current password must be provided for non-OAuth users");
-            }
+
+            throw new InvalidOperationException("Current password must be provided for non-OAuth users");
         }
         catch (InvalidOperationException)
         {
@@ -860,6 +875,7 @@ public class UserService : IUserService
                 AuthProvider = user.AuthProvider,
                 IsOAuthUser = isOAuthUser,
                 IsTwoFactorEnabled = true,
+                HasPasswordSet = user.HasPasswordSet,
                 Token = token,
                 LastLoginAt = user.LastLoginAt
             };
