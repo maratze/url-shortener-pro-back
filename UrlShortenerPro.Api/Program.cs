@@ -128,6 +128,9 @@ app.UseCors("AllowSpecificOrigin");
 // Добавляем middleware для логирования запросов
 app.UseMiddleware<UrlShortenerPro.Api.Middleware.RequestLoggingMiddleware>();
 
+// Добавляем middleware для проверки валидности сессии пользователя
+app.UseMiddleware<UrlShortenerPro.Api.Middleware.SessionValidationMiddleware>();
+
 app.UseAuthentication();
 app.UseAuthorization();
 
