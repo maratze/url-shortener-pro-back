@@ -10,12 +10,12 @@ namespace UrlShortenerPro.Api.Controllers;
 public class UserSessionController : ControllerBase
 {
     private readonly IUserSessionService _sessionService;
-    
+
     public UserSessionController(IUserSessionService sessionService)
     {
         _sessionService = sessionService;
     }
-    
+
     [HttpGet]
     public async Task<IActionResult> GetUserSessions()
     {
@@ -33,7 +33,7 @@ public class UserSessionController : ControllerBase
             return StatusCode(500, new { error = "An error occurred while retrieving sessions", details = ex.Message });
         }
     }
-    
+
     [HttpGet("current")]
     public async Task<IActionResult> GetCurrentSession()
     {
@@ -52,22 +52,23 @@ public class UserSessionController : ControllerBase
         }
         catch (Exception ex)
         {
-            return StatusCode(500, new { error = "An error occurred while retrieving current session", details = ex.Message });
+            return StatusCode(500,
+                new { error = "An error occurred while retrieving current session", details = ex.Message });
         }
     }
-    
+
     [HttpDelete("{sessionId:int}")]
     public async Task<IActionResult> TerminateSession(int sessionId)
     {
         try
         {
             var result = await _sessionService.TerminateSessionAsync(sessionId);
-            
+
             if (result)
             {
                 return Ok(new { success = true, message = "Session terminated successfully" });
             }
-            
+
             return NotFound(new { success = false, error = "Session not found or already terminated" });
         }
         catch (UnauthorizedAccessException ex)
@@ -76,23 +77,24 @@ public class UserSessionController : ControllerBase
         }
         catch (Exception ex)
         {
-            return StatusCode(500, new { success = false, error = "An error occurred while terminating session", details = ex.Message });
+            return StatusCode(500,
+                new { success = false, error = "An error occurred while terminating session", details = ex.Message });
         }
     }
-    
+
     [HttpDelete("terminate-all-except-current")]
     public async Task<IActionResult> TerminateAllSessionsExceptCurrent()
     {
         try
         {
             var count = await _sessionService.TerminateAllSessionsExceptCurrentAsync();
-            
-            return Ok(new 
-            { 
-                success = true, 
-                message = count > 0 
-                    ? $"Successfully terminated {count} session{(count == 1 ? "" : "s")}" 
-                    : "No other active sessions found" 
+
+            return Ok(new
+            {
+                success = true,
+                message = count > 0
+                    ? $"Successfully terminated {count} session{(count == 1 ? "" : "s")}"
+                    : "No other active sessions found"
             });
         }
         catch (UnauthorizedAccessException ex)
@@ -101,7 +103,8 @@ public class UserSessionController : ControllerBase
         }
         catch (Exception ex)
         {
-            return StatusCode(500, new { success = false, error = "An error occurred while terminating sessions", details = ex.Message });
+            return StatusCode(500,
+                new { success = false, error = "An error occurred while terminating sessions", details = ex.Message });
         }
     }
-} 
+}
