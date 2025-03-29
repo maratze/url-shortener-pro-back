@@ -97,21 +97,21 @@ public class UserSessionRepository : IUserSessionRepository
         }
     }
     
-    public async Task AddSessionAsync(Core.Models.UserSession session)
+    public async Task AddSessionAsync(Core.Models.UserSession userSession)
     {
-        var infraSession = new Models.UserSession
+        var session = new UserSession
         {
-            UserId = session.UserId,
-            Token = session.Token,
-            DeviceInfo = session.DeviceInfo,
-            IpAddress = session.IpAddress,
-            Location = session.Location,
-            CreatedAt = session.CreatedAt,
-            LastActivityAt = session.LastActivityAt,
-            IsActive = session.IsActive
+            UserId = userSession.UserId,
+            Token = userSession.Token,
+            DeviceInfo = userSession.DeviceInfo,
+            IpAddress = userSession.IpAddress,
+            Location = userSession.Location,
+            CreatedAt = userSession.CreatedAt,
+            LastActivityAt = userSession.LastActivityAt,
+            IsActive = userSession.IsActive
         };
         
-        await _dbContext.UserSessions.AddAsync(infraSession);
+        await _dbContext.UserSessions.AddAsync(session);
         await _dbContext.SaveChangesAsync();
     }
     

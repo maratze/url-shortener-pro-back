@@ -24,7 +24,7 @@ public class UserSession
     
     public DateTime LastActivityAt { get; set; } = DateTime.UtcNow;
     
-    [MaxLength(500)]
+    [MaxLength(1000)]
     public string? Token { get; set; }
     
     public bool IsActive { get; set; } = true;
