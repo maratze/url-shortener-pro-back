@@ -103,6 +103,7 @@ public class UrlRepository : IUrlRepository
             url.ExpiresAt = urlDto.ExpiresAt;
             url.IsActive = urlDto.IsActive;
             url.ClickCount = urlDto.ClickCount;
+            url.HasQrCode = urlDto.HasQrCode;
             
             await _dbContext.SaveChangesAsync();
             return true;
@@ -246,23 +247,25 @@ public class UrlRepository : IUrlRepository
             UserId = url.UserId,
             CreatedAt = url.CreatedAt,
             ExpiresAt = url.ExpiresAt,
+            IsActive = url.IsActive,
             ClickCount = url.ClickCount,
-            IsActive = url.IsActive
+            HasQrCode = url.HasQrCode
         };
     }
 
-    private Url MapToEntity(UrlDto urlDto)
+    private Url MapToEntity(UrlDto dto)
     {
         return new Url
         {
-            Id = urlDto.Id,
-            OriginalUrl = urlDto.OriginalUrl,
-            ShortCode = urlDto.ShortCode,
-            UserId = urlDto.UserId,
-            CreatedAt = urlDto.CreatedAt,
-            ExpiresAt = urlDto.ExpiresAt,
-            ClickCount = urlDto.ClickCount,
-            IsActive = urlDto.IsActive
+            Id = dto.Id,
+            OriginalUrl = dto.OriginalUrl,
+            ShortCode = dto.ShortCode,
+            UserId = dto.UserId,
+            CreatedAt = dto.CreatedAt,
+            ExpiresAt = dto.ExpiresAt,
+            IsActive = dto.IsActive,
+            ClickCount = dto.ClickCount,
+            HasQrCode = dto.HasQrCode
         };
     }
 }

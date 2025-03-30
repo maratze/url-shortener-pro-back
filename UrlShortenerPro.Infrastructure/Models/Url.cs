@@ -29,5 +29,7 @@ public class Url
     
     public int ClickCount { get; set; } = 0;
     
+    public bool HasQrCode { get; set; } = false;
+    
     public ICollection<ClickData>? ClickData { get; set; }
 }

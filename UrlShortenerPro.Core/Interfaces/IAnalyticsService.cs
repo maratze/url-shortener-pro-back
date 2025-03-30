@@ -16,4 +16,5 @@ public interface IAnalyticsService
     Task<object> GetDeviceStatsAsync(int urlId, DateTime? startDate = null, DateTime? endDate = null);
     Task<object> GetLocationStatsAsync(int urlId, DateTime? startDate = null, DateTime? endDate = null);
     Task<object> GetReferrerStatsAsync(int urlId, DateTime? startDate = null, DateTime? endDate = null);
+    Task<DashboardStatsResponse> GetDashboardStatsAsync(int userId, int days = 7);
 }

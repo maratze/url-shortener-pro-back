@@ -10,4 +10,5 @@ public class UrlDto
     public DateTime? ExpiresAt { get; set; }
     public int ClickCount { get; set; }
     public bool IsActive { get; set; } = true;
+    public bool HasQrCode { get; set; }
 } 

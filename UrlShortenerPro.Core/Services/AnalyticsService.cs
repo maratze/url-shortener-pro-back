@@ -201,6 +201,42 @@ public class AnalyticsService : IAnalyticsService
         };
     }
 
+    public async Task<DashboardStatsResponse> GetDashboardStatsAsync(int userId, int days = 7)
+    {
+        // Получаем все ссылки пользователя
+        var allUserUrls = await _urlRepository.GetByUserIdAsync(userId);
+        
+        // Текущая дата для расчета новых ссылок
+        var currentDate = DateTime.UtcNow;
+        var periodStartDate = currentDate.AddDays(-days);
+        
+        // Считаем общую статистику
+        var totalLinks = allUserUrls.Count;
+        var activeLinks = allUserUrls.Count(u => u.IsActive);
+        var linksWithQrCodes = allUserUrls.Count(u => u.HasQrCode);
+        
+        // Считаем новые ссылки и ссылки с QR-кодами за указанный период
+        var newLinks = allUserUrls.Count(u => u.CreatedAt >= periodStartDate);
+        var newQrCodes = allUserUrls.Count(u => u.HasQrCode && u.CreatedAt >= periodStartDate);
+        
+        // Получаем общее количество кликов
+        var totalClicks = await _clickDataRepository.GetTotalClicksForUserAsync(userId);
+        
+        // Расчет процента активных ссылок
+        var activeLinksPercentage = totalLinks > 0 ? (double)activeLinks / totalLinks * 100 : 0;
+        
+        return new DashboardStatsResponse
+        {
+            TotalLinks = totalLinks,
+            LinksWithQrCodes = linksWithQrCodes,
+            ActiveLinks = activeLinks,
+            ActiveLinksPercentage = Math.Round(activeLinksPercentage, 1),
+            TotalClicks = totalClicks,
+            NewLinks = newLinks,
+            NewQrCodes = newQrCodes
+        };
+    }
+
     public async Task<bool> UserCanAccessUrlAnalyticsAsync(int urlId, int userId)
     {
         var url = await _urlRepository.GetByIdAsync(urlId);
